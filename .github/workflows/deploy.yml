@@ -11,6 +11,7 @@ jobs:
     environment: nuget.org
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -30,12 +31,18 @@ jobs:
         with:
           name: nuget-packages-${{ github.event.release.tag_name }}
           path: .packages/*.nupkg
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: lennoncork
       - name: Publish to NuGet.org
         uses: cake-build/cake-action@v3
         with:
           target: PushRelease
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
