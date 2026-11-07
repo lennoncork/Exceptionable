@@ -59,7 +59,6 @@ Task("Package")
             Configuration = configuration,
             OutputDirectory = "./.packages/",
             NoBuild = true,
-            ArgumentCustomization = args => args.Append("-p:PackageVersion=1.0.0"),
         });
     });
 
