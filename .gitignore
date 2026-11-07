@@ -1,0 +1,14 @@
+*.*~
+.vs
+**/bin/
+**/obj/
+.output
+.publish
+.packages
+.cake
+tools
+*.user
+.issues
+coverage
+artifacts
+*.coverlet.json

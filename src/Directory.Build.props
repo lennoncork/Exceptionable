@@ -1,0 +1,60 @@
+<Project>
+
+    <PropertyGroup>
+        <DirectoryBuildPath>$(MSBuildThisFileDirectory)</DirectoryBuildPath>
+        <SolutionOutputPath>$(MSBuildThisFileDirectory)..\.output</SolutionOutputPath>
+        <ProjectOutputPath>$(SolutionOutputPath)\$(MSBuildProjectName)</ProjectOutputPath>
+        <BaseOutputPath>$(ProjectOutputPath)\bin</BaseOutputPath>
+        <BaseIntermediateOutputPath>$(ProjectOutputPath)\obj</BaseIntermediateOutputPath>
+        <PackageOutputPath>$(SolutionOutputPath)\Packages</PackageOutputPath>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <LanguageTargets>$(MSBuildBinPath)\Microsoft.CSharp.targets</LanguageTargets>
+        <EnableNETAnalyzers>false</EnableNETAnalyzers>
+        <AnalysisMode>None</AnalysisMode>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <NuGetAudit>true</NuGetAudit>
+        <NuGetAuditMode>all</NuGetAuditMode>
+        <NuGetAuditLevel>high</NuGetAuditLevel>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+        <NoWarn>1701;1702;1705;NU1603;NU5105</NoWarn>
+        <DocumentationFile>$(ProjectOutputPath)\$(MSBuildProjectName).xml</DocumentationFile>
+        <RootNamespace>$(MSBuildProjectName)</RootNamespace>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <Description>An Roslyn analyzer for handling exceptions in .NET projects.</Description>
+        <ProjectUrl>https://github.com/lennoncork/Exceptionable</ProjectUrl>
+        <License>MIT</License>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryType>GIT</RepositoryType>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None
+            Include="..\..\README.md"
+            Link="Properties\README.md"
+            Pack="true"
+            PackagePath="\" />
+    </ItemGroup>
+
+    <PropertyGroup>
+        <SolutionDir
+            Condition="'$(SolutionDir)' == ''">
+            $(DirectoryBuildPath)
+        </SolutionDir>
+        <OutputDir
+            Condition="'$(OutputDir)' == ''">
+            $(BaseOutputPath)\$(Configuration)
+        </OutputDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None
+            Include="$(MSBuildThisFileFullPath)"
+            Link="Properties\$(MSBuildThisFile)" />
+    </ItemGroup>
+
+</Project>

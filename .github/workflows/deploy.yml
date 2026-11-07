@@ -1,0 +1,41 @@
+name: deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  push:
+    if: github.event.release.prerelease == false
+    runs-on: windows-latest
+    environment: nuget.org
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build, test, and package
+        uses: cake-build/cake-action@v2
+        with:
+          target: PackageRelease
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ github.event.release.tag_name }}
+          path: .packages/*.nupkg
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish to NuGet.org
+        uses: cake-build/cake-action@v2
+        with:
+          target: PushRelease
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
