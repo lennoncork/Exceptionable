@@ -25,9 +25,11 @@ dotnet cake --target=Build
 dotnet cake --target=Analyzers
 ```
 
-For a stable NuGet release, publish a GitHub Release with a `vMAJOR.MINOR.PATCH`
-tag. GitVersion calculates the package versions, and the release workflow
-verifies that both packages match the tag before pushing them to NuGet.org.
+For a NuGet release, publish a GitHub Release with a GitVersion-compatible
+SemVer tag such as `v1.0.0` or `v0.1.0-alpha1`. GitVersion calculates package
+versions; the release workflow builds and validates the packages before
+pushing them to NuGet.org. GitHub prereleases are published as NuGet prerelease
+versions.
 
 ## Guidance
 - Prefer the `dotnet cake` `Build` target to mirror CI.

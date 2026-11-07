@@ -6,7 +6,6 @@ on:
 
 jobs:
   push:
-    if: github.event.release.prerelease == false
     runs-on: windows-latest
     environment: nuget.org
     permissions:
@@ -25,7 +24,7 @@ jobs:
       - name: Build, test, and package
         uses: cake-build/cake-action@v3
         with:
-          target: PackageRelease
+          target: Validate
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
@@ -42,7 +41,6 @@ jobs:
       - name: Publish to NuGet.org
         uses: cake-build/cake-action@v3
         with:
-          target: PushRelease
+          target: Push
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}

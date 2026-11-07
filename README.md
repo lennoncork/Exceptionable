@@ -44,5 +44,6 @@ dotnet cake build.cake --target=Validate
 
 The validation target also packs both libraries and builds the consumer sample
 against those local packages. GitVersion derives package versions from Git
-history. Publishing is triggered by a published stable GitHub Release whose
-`vMAJOR.MINOR.PATCH` tag matches both package versions.
+history. Published stable and prerelease GitHub Releases are published to
+NuGet.org. Use GitVersion-compatible SemVer tags, such as `v1.0.0` or
+`v0.1.0-alpha1`, to produce stable and prerelease package versions.

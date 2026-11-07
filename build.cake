@@ -82,53 +82,33 @@ Task("Validate")
     .IsDependentOn("Test")
     .IsDependentOn("Consumer");
 
-Task("PackageRelease")
-    .IsDependentOn("Validate")
-    .Does(() =>
-    {
-        var version = GetReleaseVersion();
-        CleanDirectory("./.packages/");
-        DotNetPack("./src/Exceptionable.slnx", new DotNetPackSettings
-        {
-            Configuration = "Release",
-            OutputDirectory = "./.packages/",
-            NoBuild = true,
-        });
 
-        ValidateReleasePackages(version);
-    });
-
-Task("PushRelease")
-    .Does(() =>
+Task("Push")
+    .DoesForEach(() => GetFiles("./.packages/*.nupkg"), package =>
     {
-        var version = GetReleaseVersion();
-        var packages = ValidateReleasePackages(version);
         var apiKey = EnvironmentVariable("NUGET_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new CakeException("Configure the NUGET_API_KEY secret in the nuget.org GitHub environment.");
         }
 
-        foreach (var package in packages)
+        Information("Publishing {0}...", package.FullPath);
+        var arguments = new ProcessArgumentBuilder()
+            .Append("nuget")
+            .Append("push")
+            .AppendQuoted(package.FullPath)
+            .Append("--api-key")
+            .AppendQuoted(apiKey)
+            .Append("--source")
+            .AppendQuoted("https://api.nuget.org/v3/index.json")
+            .Append("--skip-duplicate");
+        var exitCode = StartProcess("dotnet", new ProcessSettings
         {
-            Information("Publishing {0}...", package.FullPath);
-            var arguments = new ProcessArgumentBuilder()
-                .Append("nuget")
-                .Append("push")
-                .AppendQuoted(package.FullPath)
-                .Append("--api-key")
-                .AppendQuoted(apiKey)
-                .Append("--source")
-                .AppendQuoted("https://api.nuget.org/v3/index.json")
-                .Append("--skip-duplicate");
-            var exitCode = StartProcess("dotnet", new ProcessSettings
-            {
-                Arguments = arguments,
-            });
-            if (exitCode != 0)
-            {
-                throw new CakeException($"Publishing '{package.GetFilename()}' failed with exit code {exitCode}.");
-            }
+            Arguments = arguments,
+        });
+        if (exitCode != 0)
+        {
+            throw new CakeException($"Publishing '{package.GetFilename()}' failed with exit code {exitCode}.");
         }
     });
 
@@ -136,46 +116,3 @@ Task("Default")
     .IsDependentOn("Validate");
 
 RunTarget(target);
-
-string GetReleaseVersion()
-{
-    var releaseTag = EnvironmentVariable("RELEASE_TAG") ?? string.Empty;
-    var match = System.Text.RegularExpressions.Regex.Match(
-        releaseTag,
-        "^v(?<version>\\d+\\.\\d+\\.\\d+)$");
-    if (!match.Success)
-    {
-        throw new CakeException($"Release tag '{releaseTag}' must use the stable vMAJOR.MINOR.PATCH format.");
-    }
-
-    return match.Groups["version"].Value;
-}
-
-FilePath[] ValidateReleasePackages(string version)
-{
-    var expectedPackages = new[]
-    {
-        $"Exceptionable.{version}.nupkg",
-        $"Exceptionable.Analyzers.{version}.nupkg",
-    };
-    var packages = GetFiles("./.packages/*.nupkg").ToArray();
-    var actualPackages = packages.Select(package => package.GetFilename().ToString()).ToArray();
-
-    foreach (var expectedPackage in expectedPackages)
-    {
-        if (!actualPackages.Contains(expectedPackage, StringComparer.Ordinal))
-        {
-            throw new CakeException($"Expected package '{expectedPackage}' was not produced for release v{version}.");
-        }
-    }
-
-    var unexpectedPackages = actualPackages
-        .Where(package => !expectedPackages.Contains(package, StringComparer.Ordinal))
-        .ToArray();
-    if (unexpectedPackages.Length > 0)
-    {
-        throw new CakeException($"Unexpected packages found: {string.Join(", ", unexpectedPackages)}.");
-    }
-
-    return packages;
-}

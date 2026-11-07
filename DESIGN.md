@@ -60,8 +60,8 @@ takes precedence.
 6. **Build runner:** Use Cake as the build runner. Build, test, and package
     workflows must be orchestrated through Cake.
 7. **Release versioning:** Derive package versions from Git history using
-  GitVersion. Publish packages only for published stable GitHub Releases
-  whose `vMAJOR.MINOR.PATCH` tag matches both package versions.
+  GitVersion. Publish packages for published GitHub Releases, including
+  prereleases, using GitVersion's stable or prerelease package version.
 
 ## 3. Goals
 
@@ -409,8 +409,8 @@ The initial implementation confirms these decisions:
 - Class-level contracts apply to methods, constructors, and accessors.
 - Ambiguous short exception names are errors; attribute strings do not use
   source-file `using` directives.
-- GitVersion derives package versions from Git history. Stable NuGet releases
-  are published from matching `vMAJOR.MINOR.PATCH` GitHub Release tags.
+- GitVersion derives package versions from Git history. Stable and prerelease
+  GitHub Releases both publish their GitVersion-generated package versions.
 
 Override and interface contract compatibility remains open and must be
 resolved before analyzing virtual or interface dispatch. Those dispatch cases
