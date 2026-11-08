@@ -63,7 +63,10 @@ namespace Exceptionable.Analyzers.Analysis
 
         private static bool isRecordCopyConstructor(IMethodSymbol constructor)
         {
-            return constructor.ContainingType.IsRecord &&
+            // Only the compiler-generated copy constructor skips field initializers.
+            // A constructor the user wrote with the same signature still runs them.
+            return constructor.IsImplicitlyDeclared &&
+                constructor.ContainingType.IsRecord &&
                 constructor.Parameters.Length == 1 &&
                 SymbolEqualityComparer.Default.Equals(
                     constructor.Parameters[0].Type,

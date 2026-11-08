@@ -128,17 +128,22 @@ as follows:
 1. A fully qualified metadata name (for example,
    `"System.IO.IOException"`) resolves exactly. Nested types accept either
    the metadata form (`"N.Outer+NestedException"`) or the dotted C# form
-   (`"N.Outer.NestedException"`).
+   (`"N.Outer.NestedException"`). A dotted name that matches both a
+   namespace-qualified exception and a different nested exception is
+   ambiguous. A namespace-qualified type that does not derive from
+   `System.Exception` does not hide a nested exception with the same dotted
+   spelling.
 2. A short name (for example, `"IOException"`) resolves only when it
    identifies one exception type in the compilation. Types that do not derive
    from `System.Exception` do not make the name ambiguous. The built-in
-   `"Exception"` shorthand resolves to `System.Exception`.
+   `"Exception"` shorthand resolves to `System.Exception`. Short names are
+   indexed once per compilation.
 3. An unresolved or ambiguous name is an attribute-usage diagnostic; it must
    not silently disable analysis.
 4. A name that identifies a type which does not derive from `System.Exception`
    is the same attribute-usage diagnostic. The message says that the type does
-   not derive from `System.Exception`. A short name that also matches an
-   exception type still resolves to that exception type.
+   not derive from `System.Exception`. A name that also matches an exception
+   type still resolves to that exception type.
 
 The declared type covers derived exception types, including an indirect
 subclass and a closed constructed generic exception type such as
@@ -151,7 +156,12 @@ type parameter is rejected by the compiler and is not a contract.
 
 - The attributes are valid on methods, constructors, classes, structs,
   properties (including indexers), and events, and are inherited where C#
-  attribute inheritance applies.
+  attribute inheritance applies. They are not valid on an interface type.
+  An interface contract is declared on each interface member. A derived
+  interface member that redeclares a base member and does not declare its
+  own contract keeps that base contract. When the member replaces several
+  base members, the effective contract is their intersection; if the
+  intersection allows nothing, the member is `[DoesNotThrow]`.
 - Accessor declarations may carry method-targeted attributes. A property or
   event contract applies to its accessors unless an accessor declares its own
   contract. Analyzer call checks include property get/set and event add/remove
@@ -208,7 +218,7 @@ interface contract. An exception is unhandled when neither condition holds.
 
 For no-throw methods, all known escaping exceptions are violations; catches
 that consume them are permitted. An explicit `throw` that cannot be shown to
-be caught is a violation. Returning normally is not required: non-exceptional
+be caught is EXC001. An annotated call that cannot is EXC003. Returning normally is not required: non-exceptional
 termination such as an infinite loop is outside the contract.
 
 A `try` with one or more `catch` clauses is unnecessary when every reachable
@@ -270,7 +280,9 @@ information from Roslyn. The initial implementation should recognize:
   inherited interface members, and multiple interfaces mapped to one method.
 
 Use Roslyn's operation, control-flow, and symbol APIs rather than text
-matching. Analyze operations only in reachable control-flow blocks. A catch
+matching. Generated code is not analyzed. Analyze operations only in
+reachable control-flow blocks. Reachability is cached per control-flow root,
+so a field initializer and a constructor body do not share a graph. A catch
 proves handling only when the operation is in the corresponding `try` body and
 the catch type covers the exception. A non-constant exception filter does not
 prove handling. When type or flow information is unknown, prefer not to report
@@ -278,8 +290,9 @@ a definite violation; report an unsupported/unknown case only if a later
 diagnostic is introduced specifically for it.
 
 An interface call uses the contract declared by the statically selected
-interface member; calls through different interfaces use their respective
-contracts. An implementation must satisfy all known interface contracts it
+interface member. A redeclaration without its own contract uses the base
+member contract described above. Calls through different interfaces use
+their respective contracts. An implementation must satisfy all known interface contracts it
 implements, so conflicting declarations constrain the implementation to the
 intersection of their permitted exception sets. Such declarations are not
 themselves conflicts when placed on separate interfaces. Explicit and implicit
@@ -305,8 +318,11 @@ their own handler.
 `base.` calls and member accesses are statically bound to the selected
 member, including when that member is virtual. Field and property
 initializers are checked against every constructor that executes them.
-Constructors that chain with `: this()`, and record copy constructors, do
-not execute those initializers. A `this()` or `base()` constructor call is
+Constructors that chain with `: this()`, and compiler-generated record copy
+constructors, do not execute those initializers. A constructor the user
+writes with that signature still runs them. A positional parameter of the
+record type conflicts with the synthesized copy constructor and does not
+compile. A `this()` or `base()` constructor call is
 still checked as a call. Synchronous `foreach` checks `GetEnumerator`,
 `MoveNext`, `Current`, `Dispose`, and a deconstruction of the element.
 Synchronous `using` checks `Dispose`, including an explicit interface
@@ -344,24 +360,24 @@ current guarantees. Document these limitations in help text and tests.
 
 ## 8. Diagnostics
 
-Use a stable diagnostic ID prefix (for example, `EXC`) and include IDs,
-titles, messages, categories, default severities, and help links in the
-implementation. The exact prefix should be confirmed before publishing a
-package.
+Diagnostics use the `EXC` prefix. Descriptors include IDs, titles, messages,
+categories, default severities, and help links. The catalog is
+[docs/README.md](./docs/README.md).
 
-| Proposed ID | Condition | Initial default |
+| ID | Condition | Default |
 |---|---|---|
-| EXC001 | A known exception escapes a `[DoesNotThrow]` method or type. | Warning |
-| EXC002 | A known exception escapes a `[Throws]` method but is not in its declared set. | Warning |
-| EXC003 | A call to an annotated method may throw an exception that is neither caught nor permitted by the caller's contract. | Warning |
+| EXC001 | An explicit `throw` escapes a `[DoesNotThrow]` method or type. | Warning |
+| EXC002 | An explicit `throw` escapes a `[Throws]` method but is not in its declared set. | Warning |
+| EXC003 | A call, creation, accessor, operator, conversion, or supported pattern method may throw an exception that is neither caught nor permitted by the caller's contract. This includes a call inside a `[DoesNotThrow]` method. | Warning |
 | EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
-| EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same target. | Error |
-| EXC006 | A `try`/`catch` is unnecessary because its reachable body only calls `[DoesNotThrow]` members. | Warning |
+| EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, or event. | Error |
+| EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
 
-Diagnostics should identify the relevant throw or call site. Where useful,
-include the exception type and the contract that was violated. Avoid
-diagnostics for exception sources with no known contract in the initial
-release.
+EXC001 and EXC002 report explicit throws. An annotated call is EXC003 even
+when the caller is `[DoesNotThrow]`. Messages name exception types with
+their namespace-qualified display names, so two exceptions that share a
+short name stay distinct. Diagnostics identify the relevant throw or call
+site. Avoid diagnostics for exception sources with no known contract.
 
 ## 9. Analysis configuration
 
@@ -475,61 +491,31 @@ operation/symbol actions needed for supported constructs. Package the analyzer
 in the conventional NuGet analyzer assets location and verify both packages
 in a consumer project.
 
-## 11. Implementation roadmap
+## 11. Implementation status
 
-### Phase 0 — Establish the analyzer project
+The initial analyzer includes the phase 0 through phase 3 behavior and the
+phase 4 documentation:
 
-- Create separate Exceptionable and Exceptionable.Analyzers
-  projects and NuGet packages.
-- Configure and verify support for C# projects targeting .NET 10 and net481,
-  and establish Cake as the build runner for build, test, and package workflows.
-- Implement and test `<Exceptionable>` and `.editorconfig` enablement, including
-  file-scoped overrides and per-rule severity.
-- Select and document supported .NET, C#, Roslyn, and IDE versions.
-- Add analyzer test infrastructure and a minimal test project.
-- Verify attribute references, analyzer loading, and configuration in a
-  sample consumer project.
+- Separate Exceptionable and Exceptionable.Analyzers packages, Cake build,
+  test, and pack, and a consumer sample for `net10.0` and `net481`.
+- `<Exceptionable>` and `exceptionable_analysis`, including file-scoped
+  overrides and per-rule severity.
+- Both attribute forms, name resolution, precedence, and EXC004 and EXC005.
+- Explicit throws (EXC001 and EXC002), annotated calls (EXC003), and
+  unnecessary `try`/`catch` (EXC006), including constructors, accessors,
+  initializers, pattern methods, and interface contracts.
+- Supported hosts are recorded in section 13.
 
-### Phase 1 — Attributes and contract reading
+Still open:
 
-- Implement both attributes and their usage metadata.
-- Resolve `[Throws]` names according to the rules above.
-- Implement contract precedence and inheritance.
-- Add EXC004 and EXC005 tests, including malformed and ambiguous names.
-
-### Phase 2 — Direct exception declarations
-
-- Analyze explicit throw statements and known throws from annotated calls.
-- Implement catch matching, declared-set matching, and method-level
-  diagnostics (EXC001 and EXC002).
-- Add tests for exact types, base classes, derived exceptions, catch-all,
-  rethrow, and unreachable code.
-
-### Phase 3 — Caller validation
-
-- Check calls to annotated methods against caller catches and declared
-  contracts (EXC003).
-- Report EXC006 when a `try`/`catch` encloses only reachable `[DoesNotThrow]`
-  calls.
-- Cover constructors, accessors, class-level contracts, and precedence.
-- Honor contracts at interface-typed call sites and validate source interface
-  implementations against all mapped interface contracts.
-- Test that unannotated calls do not produce speculative diagnostics.
-
-### Phase 4 — Quality and usability
-
-- Add diagnostic documentation, configuration examples, and release guidance.
-- Evaluate code fixes only where a safe fix is clear (for example, adding a
-  compatible `[Throws]` annotation); never generate a catch that silently
+- Code fixes. Add one only where a safe fix is clear (for example, adding a
+  compatible `[Throws]` annotation). Never generate a catch that silently
   suppresses an exception.
-- Measure analyzer performance on representative projects and avoid repeated
-  symbol resolution or whole-compilation rescans.
-
-### Phase 5 — Advanced exception behavior
-
-- Design and test async/await and iterator semantics before enabling rules
-  for those constructs.
-- Consider override compatibility and metadata-based contracts.
+- Measuring analyzer performance on representative projects. Short exception
+  names are already indexed once per compilation.
+- Async/await and iterator contracts, before enabling rules for those
+  constructs. Override compatibility beyond the sealed and `base` cases, and
+  metadata-based contracts, also remain future work.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -571,7 +557,14 @@ Minimum acceptance criteria for the initial usable release:
 The initial implementation confirms these decisions:
 
 - The attributes target .NET 10 and .NET Framework 4.8.1; the analyzer targets
-  .NET Standard 2.0 and uses Roslyn 4.14.
+  .NET Standard 2.0 and uses Roslyn 4.14. That compiler version loads in
+  Visual Studio 2022 17.14 or later and in .NET SDK builds that include
+  Roslyn 4.14 or newer. Tests parse with `LanguageVersion.Latest` from that
+  compiler reference. Generated code is excluded.
+- `[Throws<TException>]` requires a consumer target that supports generic
+  attributes, which is .NET 7 and later. A `net481` consumer uses the string
+  form. The attribute assembly itself still multi-targets `net481` so the
+  string form is available there.
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
@@ -588,7 +581,11 @@ The initial implementation confirms these decisions:
 - Interface contracts apply at interface-typed call sites and, together with
   the implementation's own contract, at throws and calls inside a source
   implementation. External implementations and methods inherited from a
-  non-implementing base class are trusted rather than proven.
+  non-implementing base class are trusted rather than proven. The attributes
+  cannot be applied to an interface type. A derived interface member that
+  redeclares a base member and has no contract of its own keeps the base
+  contract; several base contracts intersect, and an empty intersection is
+  `[DoesNotThrow]`.
 - A derived type contract replaces a base type contract, and an override's
   contract replaces the base method contract. Open virtual, abstract, and
   unsealed override call sites remain unsupported. Sealed methods and methods
@@ -600,7 +597,12 @@ The initial implementation confirms these decisions:
   types are ignored when deciding ambiguity if an exception type matches.
   Attribute strings do not use source-file `using` directives. A leading
   `global::` is ignored. Nested exception names accept dotted and metadata
-  forms.
+  forms. A dotted name that matches two different exception types is
+  ambiguous. A non-exception namespace type does not hide a nested exception
+  with the same dotted spelling. Diagnostic messages use the
+  namespace-qualified exception display name. EXC001 and EXC002 are explicit
+  throws; annotated calls, including calls inside `[DoesNotThrow]`, are
+  EXC003.
 - `[Throws<TException>]` declares the same contract as the string form.
   `TException` must derive from `System.Exception`. String and generic
   attributes on one target form one declared set.
@@ -608,7 +610,11 @@ The initial implementation confirms these decisions:
   declares its own contract. User-defined operators and conversions are
   checked at their bodies and call sites. `base` access is statically bound.
   Field and property initializers are checked against the constructors that
-  run them. Synchronous `foreach` and `using` pattern methods, and
+  run them. Compiler-generated record copy constructors do not run
+  initializers; a user-written constructor with that signature does. A
+  positional parameter of the record type is illegal because it conflicts
+  with the synthesized copy constructor.
+  Synchronous `foreach` and `using` pattern methods, and
   deconstruction, are calls. `throw null` is `NullReferenceException`.
   `nameof`, local functions, and lambdas are not enclosing-method throws.
 - GitVersion derives package versions from Git history. Feature-branch and

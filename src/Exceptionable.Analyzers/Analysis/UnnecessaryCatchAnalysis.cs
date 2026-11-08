@@ -22,12 +22,12 @@ namespace Exceptionable.Analyzers.Analysis
                 !compilationContext.Options.IsEnabled(tryOperation.Syntax.SyntaxTree) ||
                 operationContext.ContainingSymbol is not IMethodSymbol callerMethod ||
                 !compilationContext.IsSupportedMethod(callerMethod) ||
-                !compilationContext.Reachability.IsReachable(tryOperation, callerMethod))
+                !compilationContext.Reachability.IsReachable(tryOperation))
             {
                 return;
             }
 
-            var inspector = new TryBodyInspector(compilationContext, callerMethod);
+            var inspector = new TryBodyInspector(compilationContext);
             if (!inspector.TryGetDoesNotThrowTargets(tryOperation.Body, out ImmutableArray<string> names))
             {
                 return;
@@ -70,13 +70,11 @@ namespace Exceptionable.Analyzers.Analysis
         private sealed class TryBodyInspector
         {
             private readonly ExceptionableCompilationContext compilationContext;
-            private readonly IMethodSymbol method;
             private readonly List<string> names = [];
 
-            internal TryBodyInspector(ExceptionableCompilationContext compilationContext, IMethodSymbol method)
+            internal TryBodyInspector(ExceptionableCompilationContext compilationContext)
             {
                 this.compilationContext = compilationContext;
-                this.method = method;
             }
 
             internal bool TryGetDoesNotThrowTargets(IOperation body, out ImmutableArray<string> targets)
@@ -93,11 +91,12 @@ namespace Exceptionable.Analyzers.Analysis
 
             private Step walk(IOperation operation)
             {
-                if (!this.compilationContext.Reachability.IsReachable(operation, this.method))
+                if (!this.compilationContext.Reachability.IsReachable(operation))
                 {
                     return Step.Ok;
                 }
 
+                // Keep this set aligned with the non-throwing operations in DESIGN.md section 6.
                 return operation switch
                 {
                     IAnonymousFunctionOperation or ILocalFunctionOperation or INameOfOperation => Step.Ok,

@@ -54,20 +54,29 @@ using System.Threading.Tasks;
 class C
 {
     Task Work() => Task.CompletedTask;
+    ValueTask WorkValue() => default;
     IEnumerable<int> Items() => null;
+    IAsyncEnumerable<int> Stream() => null;
+    IAsyncEnumerator<int> Move() => null;
     int Value() => 0;
 }";
             CSharpCompilation compilation = TestCompilation.Create(source);
             IMethodSymbol[] methods =
             [
                 TestCompilation.GetMethod(compilation, "C", "Work"),
+                TestCompilation.GetMethod(compilation, "C", "WorkValue"),
                 TestCompilation.GetMethod(compilation, "C", "Items"),
+                TestCompilation.GetMethod(compilation, "C", "Stream"),
+                TestCompilation.GetMethod(compilation, "C", "Move"),
                 TestCompilation.GetMethod(compilation, "C", "Value"),
             ];
 
             Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[0].ReturnType), Is.True);
             Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[1].ReturnType), Is.True);
-            Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[2].ReturnType), Is.False);
+            Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[2].ReturnType), Is.True);
+            Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[3].ReturnType), Is.True);
+            Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[4].ReturnType), Is.True);
+            Assert.That(MethodAnalysisPolicy.IsDeferredReturnType(methods[5].ReturnType), Is.False);
         }
     }
 }

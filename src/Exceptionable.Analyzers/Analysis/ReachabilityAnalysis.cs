@@ -9,18 +9,18 @@ namespace Exceptionable.Analyzers.Analysis
 {
     internal sealed class ReachabilityAnalysis
     {
-        private readonly ConcurrentDictionary<IMethodSymbol, MethodReachability> methodReachability =
-            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<(SyntaxTree Tree, TextSpan Span), MethodReachability> graphs = new();
 
-        internal bool IsReachable(IOperation operation, IMethodSymbol method)
+        internal bool IsReachable(IOperation operation)
         {
             if (!tryGetControlFlowRoot(operation, out IOperation? root))
             {
                 return true;
             }
 
-            return this.methodReachability
-                .GetOrAdd(method, _ => createMethodReachability(root))
+            (SyntaxTree SyntaxTree, TextSpan Span) key = (root.Syntax.SyntaxTree, root.Syntax.Span);
+            return this.graphs
+                .GetOrAdd(key, _ => createMethodReachability(root))
                 .IsReachable(operation);
         }
 

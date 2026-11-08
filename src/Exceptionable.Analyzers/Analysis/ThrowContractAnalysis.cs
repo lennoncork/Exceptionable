@@ -22,7 +22,7 @@ namespace Exceptionable.Analyzers.Analysis
 
             IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
                 .Where(compilationContext.IsSupportedMethod)
-                .Where(host => compilationContext.Reachability.IsReachable(throwOperation, host))];
+                .Where(host => compilationContext.Reachability.IsReachable(throwOperation))];
             if (hosts.Length == 0)
             {
                 return;
@@ -58,14 +58,14 @@ namespace Exceptionable.Analyzers.Analysis
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.DoesNotThrowEscapes,
                     throwOperation.Syntax.GetLocation(),
-                    exceptionType.Name));
+                    exceptionType.GetExceptionDisplayName()));
             }
             else if (applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.ThrowsMismatch,
                     throwOperation.Syntax.GetLocation(),
-                    exceptionType.Name));
+                    exceptionType.GetExceptionDisplayName()));
             }
         }
     }

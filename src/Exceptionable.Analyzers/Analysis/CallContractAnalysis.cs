@@ -40,7 +40,7 @@ namespace Exceptionable.Analyzers.Analysis
 
             IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
                 .Where(compilationContext.IsSupportedMethod)
-                .Where(host => compilationContext.Reachability.IsReachable(operation, host))];
+                .Where(host => compilationContext.Reachability.IsReachable(operation))];
             if (hosts.Length == 0)
             {
                 return;
@@ -65,7 +65,7 @@ namespace Exceptionable.Analyzers.Analysis
                         continue;
                     }
 
-                    string key = targetMethod.GetContractDisplayName() + ":" + declaredType.Name;
+                    string key = targetMethod.GetContractDisplayName() + ":" + exceptionIdentity(declaredType);
                     if (!reported.Add(key))
                     {
                         continue;
@@ -75,10 +75,13 @@ namespace Exceptionable.Analyzers.Analysis
                         ExceptionableDiagnostics.CallerViolation,
                         getReportLocation(operation),
                         targetMethod.GetContractDisplayName(),
-                        declaredType.Name));
+                        declaredType.GetExceptionDisplayName()));
                 }
             }
         }
+
+        private static string exceptionIdentity(ITypeSymbol type) =>
+            type.GetExceptionDisplayName() + ":" + type.ContainingAssembly?.Identity.Name;
 
         private static Location getReportLocation(IOperation operation)
         {

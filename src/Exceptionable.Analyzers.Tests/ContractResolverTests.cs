@@ -182,5 +182,79 @@ class C
                 contract.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
                 Is.EqualTo(new[] { "System.IO.IOException", "System.ArgumentException" }));
         }
+
+        [Test]
+        public void GetEffectiveContract_RedeclaredInterfaceMemberKeepsBaseContract()
+        {
+            const string redeclaredSource = @"
+using System;
+namespace Exceptionable
+{
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    sealed class ThrowsAttribute : Attribute
+    {
+        public ThrowsAttribute(string name) { }
+    }
+}
+interface IBase
+{
+    [Exceptionable.Throws(""System.IO.IOException"")]
+    void Execute();
+}
+interface IDerived : IBase
+{
+    void Execute();
+}
+interface IReplaced : IBase
+{
+    [Exceptionable.Throws(""System.ArgumentException"")]
+    void Execute();
+}";
+            CSharpCompilation compilation = TestCompilation.Create(redeclaredSource);
+            ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
+
+            ExceptionContract inherited = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "IDerived", "Execute"));
+            ExceptionContract replaced = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "IReplaced", "Execute"));
+
+            Assert.That(inherited.DeclaredTypes.Single().ToDisplayString(), Is.EqualTo("System.IO.IOException"));
+            Assert.That(replaced.DeclaredTypes.Single().ToDisplayString(), Is.EqualTo("System.ArgumentException"));
+        }
+
+        [Test]
+        public void GetEffectiveContract_DisjointRedeclaredContractsAllowNothing()
+        {
+            const string disjointSource = @"
+using System;
+namespace Exceptionable
+{
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    sealed class ThrowsAttribute : Attribute
+    {
+        public ThrowsAttribute(string name) { }
+    }
+}
+interface IFirst
+{
+    [Exceptionable.Throws(""System.IO.IOException"")]
+    void Execute();
+}
+interface ISecond
+{
+    [Exceptionable.Throws(""System.ArgumentException"")]
+    void Execute();
+}
+interface IDerived : IFirst, ISecond
+{
+    void Execute();
+}";
+            CSharpCompilation compilation = TestCompilation.Create(disjointSource);
+            ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
+            ExceptionContract contract = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "IDerived", "Execute"));
+
+            Assert.That(contract.IsDoesNotThrow, Is.True);
+        }
     }
 }

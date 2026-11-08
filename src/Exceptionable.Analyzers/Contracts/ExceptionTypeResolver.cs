@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 
 namespace Exceptionable.Analyzers.Contracts
@@ -11,6 +12,7 @@ namespace Exceptionable.Analyzers.Contracts
         private readonly INamedTypeSymbol? exceptionBaseType;
         private readonly ConcurrentDictionary<string, ExceptionTypeResolution> cache =
             new(StringComparer.Ordinal);
+        private ShortNameIndex? shortNames;
 
         internal ExceptionTypeResolver(Compilation compilation)
         {
@@ -46,65 +48,36 @@ namespace Exceptionable.Analyzers.Contracts
 
         private ExceptionTypeResolution resolveMetadataName(string name)
         {
-            INamedTypeSymbol? exact = this.compilation.GetTypeByMetadataName(name);
-            if (exact is not null)
-            {
-                return this.IsExceptionType(exact)
-                    ? new ExceptionTypeResolution(exact, isAmbiguous: false)
-                    : ExceptionTypeResolution.NotAnException;
-            }
-
-            if (name.IndexOf('+') >= 0 || name.IndexOf('.') < 0)
-            {
-                return ExceptionTypeResolution.NotFound;
-            }
-
             INamedTypeSymbol? match = null;
+            bool ambiguous = false;
             bool sawNonException = false;
-            string[] parts = name.Split('.');
-            for (int namespaceLength = parts.Length - 1; namespaceLength >= 1; namespaceLength--)
-            {
-                string candidate = string.Join(".", parts, 0, namespaceLength) + "+" +
-                    string.Join("+", parts, namespaceLength, parts.Length - namespaceLength);
-                INamedTypeSymbol? resolved = this.compilation.GetTypeByMetadataName(candidate);
-                if (resolved is null)
-                {
-                    continue;
-                }
-
-                if (!this.IsExceptionType(resolved))
-                {
-                    sawNonException = true;
-                    continue;
-                }
-
-                if (match is not null && !SymbolEqualityComparer.Default.Equals(match, resolved))
-                {
-                    return ExceptionTypeResolution.Ambiguous;
-                }
-
-                match = resolved;
-            }
-
-            if (match is not null)
-            {
-                return new ExceptionTypeResolution(match, isAmbiguous: false);
-            }
-
-            return sawNonException
-                ? ExceptionTypeResolution.NotAnException
-                : ExceptionTypeResolution.NotFound;
-        }
-
-        private ExceptionTypeResolution resolveShortName(string name)
-        {
-            INamedTypeSymbol? match = null;
-            bool sawNonException = false;
-            if (!this.tryFind(this.compilation.GlobalNamespace, name, ref match, ref sawNonException))
+            this.consider(this.compilation.GetTypeByMetadataName(name), ref match, ref ambiguous, ref sawNonException);
+            if (ambiguous)
             {
                 return ExceptionTypeResolution.Ambiguous;
             }
 
+            // A metadata name that already uses '+' is exact. A dotted name can also
+            // be the C# spelling of a nested type, so consider those forms too.
+            if (name.IndexOf('+') < 0 && name.IndexOf('.') >= 0)
+            {
+                string[] parts = name.Split('.');
+                for (int namespaceLength = parts.Length - 1; namespaceLength >= 1; namespaceLength--)
+                {
+                    string candidate = string.Join(".", parts, 0, namespaceLength) + "+" +
+                        string.Join("+", parts, namespaceLength, parts.Length - namespaceLength);
+                    this.consider(
+                        this.compilation.GetTypeByMetadataName(candidate),
+                        ref match,
+                        ref ambiguous,
+                        ref sawNonException);
+                    if (ambiguous)
+                    {
+                        return ExceptionTypeResolution.Ambiguous;
+                    }
+                }
+            }
+
             if (match is not null)
             {
                 return new ExceptionTypeResolution(match, isAmbiguous: false);
@@ -115,63 +88,127 @@ namespace Exceptionable.Analyzers.Contracts
                 : ExceptionTypeResolution.NotFound;
         }
 
-        private bool tryFind(
-            INamespaceSymbol namespaceSymbol,
-            string name,
+        private void consider(
+            INamedTypeSymbol? candidate,
             ref INamedTypeSymbol? match,
+            ref bool ambiguous,
             ref bool sawNonException)
         {
-            foreach (INamedTypeSymbol type in namespaceSymbol.GetTypeMembers())
+            if (candidate is null || ambiguous)
             {
-                if (!this.tryFind(type, name, ref match, ref sawNonException))
-                {
-                    return false;
-                }
+                return;
             }
 
-            foreach (INamespaceSymbol nestedNamespace in namespaceSymbol.GetNamespaceMembers())
+            if (!this.IsExceptionType(candidate))
             {
-                if (!this.tryFind(nestedNamespace, name, ref match, ref sawNonException))
-                {
-                    return false;
-                }
+                sawNonException = true;
+                return;
             }
 
-            return true;
+            if (match is not null && !SymbolEqualityComparer.Default.Equals(match, candidate))
+            {
+                ambiguous = true;
+                match = null;
+                return;
+            }
+
+            match = candidate;
         }
 
-        private bool tryFind(
-            INamedTypeSymbol type,
-            string name,
-            ref INamedTypeSymbol? match,
-            ref bool sawNonException)
-        {
-            if (string.Equals(type.Name, name, StringComparison.Ordinal))
-            {
-                if (this.IsExceptionType(type))
-                {
-                    if (match is not null)
-                    {
-                        return false;
-                    }
+        private ExceptionTypeResolution resolveShortName(string name) =>
+            this.getShortNames().Resolve(name);
 
-                    match = type;
+        private ShortNameIndex getShortNames()
+        {
+            ShortNameIndex? existing = Volatile.Read(ref this.shortNames);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            var built = new ShortNameIndex(this);
+            return Interlocked.CompareExchange(ref this.shortNames, built, null) ?? built;
+        }
+
+        private sealed class ShortNameIndex
+        {
+            private readonly Dictionary<string, INamedTypeSymbol> uniqueExceptions = new(StringComparer.Ordinal);
+            private readonly HashSet<string> ambiguous = new(StringComparer.Ordinal);
+            private readonly HashSet<string> nonExceptions = new(StringComparer.Ordinal);
+
+            internal ShortNameIndex(ExceptionTypeResolver resolver)
+            {
+                this.visit(resolver.compilation.GlobalNamespace, resolver);
+            }
+
+            internal ExceptionTypeResolution Resolve(string name)
+            {
+                if (this.ambiguous.Contains(name))
+                {
+                    return ExceptionTypeResolution.Ambiguous;
+                }
+
+                if (this.uniqueExceptions.TryGetValue(name, out INamedTypeSymbol? match))
+                {
+                    return new ExceptionTypeResolution(match, isAmbiguous: false);
+                }
+
+                return this.nonExceptions.Contains(name)
+                    ? ExceptionTypeResolution.NotAnException
+                    : ExceptionTypeResolution.NotFound;
+            }
+
+            private void visit(INamespaceSymbol namespaceSymbol, ExceptionTypeResolver resolver)
+            {
+                foreach (INamedTypeSymbol type in namespaceSymbol.GetTypeMembers())
+                {
+                    this.visit(type, resolver);
+                }
+
+                foreach (INamespaceSymbol nestedNamespace in namespaceSymbol.GetNamespaceMembers())
+                {
+                    this.visit(nestedNamespace, resolver);
+                }
+            }
+
+            private void visit(INamedTypeSymbol type, ExceptionTypeResolver resolver)
+            {
+                if (resolver.IsExceptionType(type))
+                {
+                    this.addException(type);
                 }
                 else
                 {
-                    sawNonException = true;
+                    this.nonExceptions.Add(type.Name);
                 }
-            }
 
-            foreach (INamedTypeSymbol nestedType in type.GetTypeMembers())
-            {
-                if (!this.tryFind(nestedType, name, ref match, ref sawNonException))
+                foreach (INamedTypeSymbol nestedType in type.GetTypeMembers())
                 {
-                    return false;
+                    this.visit(nestedType, resolver);
                 }
             }
 
-            return true;
+            private void addException(INamedTypeSymbol type)
+            {
+                if (this.ambiguous.Contains(type.Name))
+                {
+                    return;
+                }
+
+                if (!this.uniqueExceptions.TryGetValue(type.Name, out INamedTypeSymbol? existing))
+                {
+                    this.uniqueExceptions.Add(type.Name, type);
+                    return;
+                }
+
+                if (SymbolEqualityComparer.Default.Equals(existing, type))
+                {
+                    return;
+                }
+
+                this.uniqueExceptions.Remove(type.Name);
+                this.ambiguous.Add(type.Name);
+            }
         }
 
         internal bool IsExceptionType(ITypeSymbol type) =>

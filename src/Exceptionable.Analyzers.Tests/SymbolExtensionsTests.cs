@@ -1,4 +1,6 @@
+using System.Linq;
 using Exceptionable.Analyzers.Contracts;
+using Microsoft.CodeAnalysis;
 
 namespace Exceptionable.Analyzers.Tests
 {
@@ -35,6 +37,27 @@ class C
             var second = TestCompilation.GetMethod(compilation, "C", "M");
 
             Assert.That(first.IsSameMethod(second), Is.True);
+        }
+
+        [Test]
+        public void IsSameMethod_DistinguishesClosedGenericConstructions()
+        {
+            const string source = @"
+class C<T>
+{
+    public void M() { }
+}";
+            var compilation = TestCompilation.Create(source);
+            var definition = TestCompilation.GetMethod(compilation, "C`1", "M");
+            var intMethod = compilation.GetTypeByMetadataName("C`1")!.Construct(
+                compilation.GetSpecialType(SpecialType.System_Int32))
+                .GetMembers("M").OfType<IMethodSymbol>().Single();
+            var stringMethod = compilation.GetTypeByMetadataName("C`1")!.Construct(
+                compilation.GetSpecialType(SpecialType.System_String))
+                .GetMembers("M").OfType<IMethodSymbol>().Single();
+
+            Assert.That(definition.IsSameMethod(intMethod), Is.True);
+            Assert.That(intMethod.IsSameMethod(stringMethod), Is.False);
         }
     }
 }

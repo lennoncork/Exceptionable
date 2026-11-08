@@ -7,6 +7,8 @@ namespace Exceptionable.Analyzers.Tests
 {
     internal static class TestCompilation
     {
+        internal static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Latest);
+
         internal static CSharpCompilation Create(string source)
         {
             var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
@@ -15,7 +17,7 @@ namespace Exceptionable.Analyzers.Tests
 
             return CSharpCompilation.Create(
                 assemblyName: "ExceptionableUnitTests",
-                syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source) },
+                syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },
                 references: references,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         }
