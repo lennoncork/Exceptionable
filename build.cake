@@ -69,6 +69,22 @@ Task("Consumer")
     {
         var consumerPackages = MakeAbsolute(Directory("./.output/consumer-packages")).FullPath;
         var localPackages = MakeAbsolute(Directory("./.packages")).FullPath;
+        // A feed URL in /p:RestoreSources is parsed as an MSBuild comment on Windows
+        // because response files treat // as a comment. Keep the URL in a config file.
+        var restoreConfig = MakeAbsolute(File("./.output/consumer.nuget.config")).FullPath;
+        EnsureDirectoryExists("./.output/");
+        System.IO.File.WriteAllText(
+            restoreConfig,
+            $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="local" value="{xmlAttribute(localPackages)}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+            </configuration>
+            """);
         foreach (var framework in new[] { "net10.0", "net481" })
         {
             var buildLog = MakeAbsolute(File($"./.output/consumer-build-{framework}.log")).FullPath;
@@ -77,9 +93,7 @@ Task("Consumer")
                 Configuration = configuration,
                 Framework = framework,
                 ArgumentCustomization = args => args
-                    // Keep the just-packed Exceptionable packages on the local feed.
-                    // nuget.org supplies the net481 reference assemblies.
-                    .Append($"/p:RestoreSources=\"{localPackages};https://api.nuget.org/v3/index.json\"")
+                    .Append($"/p:RestoreConfigFile=\"{restoreConfig}\"")
                     .Append($"/p:RestorePackagesPath=\"{consumerPackages}\"")
                     .Append("--verbosity")
                     .Append("normal")
@@ -138,6 +152,9 @@ Task("Default")
     .IsDependentOn("Validate");
 
 RunTarget(target);
+
+static string xmlAttribute(string value) =>
+    System.Security.SecurityElement.Escape(value) ?? value;
 
 static int CountDiagnostics(string log, string id)
 {
