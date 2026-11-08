@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Exceptionable.Analyzers.Configuration;
 using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
@@ -7,6 +8,9 @@ namespace Exceptionable.Analyzers.Analysis
 {
     internal sealed class ExceptionableCompilationContext
     {
+        private readonly ConcurrentDictionary<IMethodSymbol, bool> supportedMethods =
+            new(SymbolEqualityComparer.Default);
+
         internal ExceptionableCompilationContext(
             Compilation compilation,
             AnalyzerConfigOptionsProvider optionsProvider)
@@ -17,6 +21,9 @@ namespace Exceptionable.Analyzers.Analysis
             this.ContractResolver = new ContractResolver(this.ExceptionTypeResolver);
             this.Reachability = new ReachabilityAnalysis();
         }
+
+        internal bool IsSupportedMethod(IMethodSymbol method) =>
+            this.supportedMethods.GetOrAdd(method, static candidate => MethodAnalysisPolicy.IsSupportedMethod(candidate));
 
         internal Compilation Compilation { get; }
 

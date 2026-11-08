@@ -29,7 +29,9 @@ For a NuGet release, publish a GitHub Release with a GitVersion-compatible
 SemVer tag such as `v1.0.0` or `v0.1.0-alpha1`. GitVersion calculates package
 versions; the release workflow builds and validates the packages before
 pushing them to NuGet.org. GitHub prereleases are published as NuGet prerelease
-versions.
+versions. Non-release commits include the commit distance in the prerelease
+number. Package versions omit `+` build metadata so NuGet keeps a distinct
+identity for each of those commits.
 
 ## Guidance
 - Prefer the `dotnet cake` `Build` target to mirror CI.

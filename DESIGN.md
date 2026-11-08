@@ -118,9 +118,12 @@ string is a type name, not an exception message. To keep the requested concise
 form usable while avoiding silent guessing, resolve names as follows:
 
 1. A fully qualified metadata name (for example,
-   `"System.IO.IOException"`) resolves exactly.
-2. A short name (for example, `"Exception"`) resolves only when it identifies
-   one exception type in the compilation. The built-in
+   `"System.IO.IOException"`) resolves exactly. Nested types accept either
+   the metadata form (`"N.Outer+NestedException"`) or the dotted C# form
+   (`"N.Outer.NestedException"`).
+2. A short name (for example, `"IOException"`) resolves only when it
+   identifies one exception type in the compilation. Types that do not derive
+   from `System.Exception` do not make the name ambiguous. The built-in
    `"Exception"` shorthand resolves to `System.Exception`.
 3. An unresolved or ambiguous name is an attribute-usage diagnostic; it must
    not silently disable analysis.
@@ -135,10 +138,12 @@ consider a strongly typed form without changing analysis semantics.
 
 ### Attribute usage and precedence
 
-- Both attributes are valid on methods and classes and are inherited where
-  C# attribute inheritance applies.
+- Both attributes are valid on methods, constructors, classes, and structs,
+  and are inherited where C# attribute inheritance applies.
 - Accessor declarations may carry method-targeted attributes; analyzer call
-  checks include property get/set and event add/remove operations.
+  checks include property get/set and event add/remove operations. Class-level
+  contracts apply to accessors, including compiler-generated accessors such as
+  auto-property getters and setters.
 - The analyzer recognizes the canonical `Exceptionable.DoesNotThrowAttribute`
   and `Exceptionable.ThrowsAttribute` identities, whether supplied by the
   package or defined in consumer source. A same-named attribute in another
@@ -147,13 +152,22 @@ consider a strongly typed form without changing analysis semantics.
   that method.
 - A method-level `[DoesNotThrow]` overrides a class-level `[Throws]` list.
 - A method-level `[Throws]` overrides class-level `[DoesNotThrow]`.
-- Applying both attributes at the same target is invalid and reported.
-- Constructors and property/event accessors are included where the attribute
-  target and Roslyn symbol model permit them. Operators and local functions
-  are out of scope initially.
+- A contract declared on a derived type replaces the base type contract. A
+  contract declared on an override replaces the base method contract. Neither
+  replacement is a conflict with attributes that remain declared only on the
+  base.
+- Applying both attributes at the same declaration is invalid and reported.
+- Constructors and property/event accessors are included. Operators and local
+  functions are out of scope initially. A `yield` in a nested local function
+  does not make the enclosing method an iterator.
 
 Precedence must be implemented centrally and covered by tests, rather than
-being independently reinterpreted by each diagnostic.
+being independently reinterpreted by each diagnostic. For a source
+implementation, the effective contract is its replaced method or type contract
+intersected with every implemented interface contract. `[DoesNotThrow]` in any
+of those contracts allows nothing to escape. Otherwise an exception may escape
+only when every declared set permits it. Throw and call diagnostics both use
+that decision.
 
 ## 6. Meaning of the contract
 
@@ -168,7 +182,8 @@ Treat a method's contract as one of:
 For a call with a known contract, an exception is handled if a reachable
 `catch` clause catches its type or a base type. A declared exception can also
 be propagated if the enclosing method's effective contract permits that
-exception type. An exception is unhandled when neither condition holds.
+exception type, including when the permission comes from an implemented
+interface contract. An exception is unhandled when neither condition holds.
 
 For no-throw methods, all known escaping exceptions are violations; catches
 that consume them are permitted. An explicit `throw` that cannot be shown to
@@ -184,7 +199,9 @@ It also skips calls whose return type is `Task`, `ValueTask`, `IEnumerable`,
 `IEnumerator`, `IAsyncEnumerable`, or `IAsyncEnumerator`, since the analyzer
 does not yet distinguish eager from deferred implementations of these APIs.
 Such annotations do not provide caller diagnostics until deferred-execution
-semantics are designed.
+semantics are designed. Skipping these bodies also skips synchronous throws
+inside them, so a `[DoesNotThrow]` caller of an `async` method is not evidence
+that the call cannot throw before the first await.
 
 The analyzer must not claim soundness for exceptions without a known contract.
 In particular, an unannotated call is not assumed to be non-throwing or
@@ -227,9 +244,10 @@ implementations are mapped with Roslyn symbols, and inherited interface
 members retain the contract on the member's declaring interface. An interface
 contract is trusted for external implementations; a source method inherited
 from a base class that does not itself implement the interface is not
-validated against a derived class's interface contract. General class
-virtual/override dispatch remains unsupported because the selected
-implementation and its contract are not known at the call site.
+validated against a derived class's interface contract. Open virtual,
+abstract, and unsealed override calls stay unsupported because the runtime
+target can differ from the statically selected method. A sealed method, and a
+method declared on a sealed type, is analyzed as that method.
 
 For `throw expression`, report the expression's static exception type before
 the implicit conversion to `System.Exception` required by C#. For `throw;`,
@@ -250,9 +268,9 @@ in later phases for:
 - Iterators, where exceptions can arise during `MoveNext` or asynchronous
   enumeration rather than when the iterator method is called. A model must
   account for enumeration catches and deferred caller contracts.
-- Lambdas and delegates; general class virtual/override dispatch remains
-  unsupported because the runtime target may differ from the statically
-  selected method.
+- Lambdas and delegates. Open virtual, abstract, and unsealed override
+  dispatch remains unsupported because the runtime target may differ from
+  the statically selected method.
 - Non-constant exception filters and complex rethrow/data-flow cases.
 - Generic exception types or exception type parameters, if introduced.
 - External APIs with contracts distributed through reference assemblies.
@@ -314,7 +332,8 @@ exceptionable_analysis = enable
 exceptionable_analysis = disable
 ```
 
-The supported values are `enable` and `disable`. A scoped
+The supported values are `enable` and `disable`. Any other value is ignored,
+so a typo does not override `<Exceptionable>`. A recognized scoped
 `exceptionable_analysis` value takes precedence over `<Exceptionable>`; when
 neither is set, analysis is disabled. When analysis is enabled,
 `dotnet_diagnostic.EXCxxx.severity` remains the standard per-diagnostic
@@ -358,6 +377,9 @@ state.
 
 The `Contracts/` area contains the normalized `ExceptionContract`,
 `ContractResolver`, `ExceptionTypeResolver`, and attribute/symbol helpers.
+`ContractResolver` is the only place that applies method, type, override, and
+interface precedence. Resolved names and effective contracts are cached for
+the compilation.
 `Analysis/` contains separate declaration, throw, and call handlers, plus
 exception-flow, operation-target, method-policy, and reachability components.
 `Diagnostics/` owns the descriptors. Keep rule handlers focused on one
@@ -468,20 +490,31 @@ The initial implementation confirms these decisions:
   .NET Standard 2.0 and uses Roslyn 4.14.
 - Diagnostics use the `EXC` prefix. EXC001-EXC003 are enabled warnings and
   EXC004-EXC005 are enabled errors.
-- Class-level contracts apply to methods, constructors, and accessors.
-- Interface contracts apply at interface-typed call sites. Source
-  implementations are checked against each mapped interface contract;
-  external implementations and methods inherited from a non-implementing
-  base class are trusted rather than proven. Class virtual/override
-  dispatch remains unsupported.
-- Ambiguous short exception names are errors; attribute strings do not use
-  source-file `using` directives.
-- GitVersion derives package versions from Git history. Stable and prerelease
-  GitHub Releases both publish their GitVersion-generated package versions.
+- Class-level contracts apply to methods, constructors, and accessors,
+  including auto-property accessors.
+- Interface contracts apply at interface-typed call sites and, together with
+  the implementation's own contract, at throws and calls inside a source
+  implementation. External implementations and methods inherited from a
+  non-implementing base class are trusted rather than proven.
+- A derived type contract replaces a base type contract, and an override's
+  contract replaces the base method contract. Open virtual, abstract, and
+  unsealed override call sites remain unsupported. Sealed methods and methods
+  on sealed types are checked at the call.
+- A short exception name is an error when more than one exception type uses
+  it. Non-exception types are ignored. Attribute strings do not use
+  source-file `using` directives. Nested exception names accept dotted and
+  metadata forms.
+- GitVersion derives package versions from Git history. Feature-branch and
+  other non-release commits use ContinuousDelivery so the prerelease number
+  changes with each commit. Package versions use that SemVer value and omit
+  `+` build metadata, which NuGet does not keep in the package identity.
+  Stable and prerelease GitHub Releases both publish their
+  GitVersion-generated package versions. `main` remains labeled `beta` until
+  a release tag selects the stable or prerelease version.
 
 Async/await and iterator contracts remain open. `[Throws]` currently describes
-only synchronous exceptions; it does not describe faults observed by awaiting
+only synchronous exceptions; it does not describe faults observed when awaiting
 tasks or enumerating iterators. Task-like and standard enumerable-returning
 calls are skipped to avoid reporting deferred exceptions as immediate ones.
-Class override compatibility also remains open, so those call sites stay
-unsupported.
+The same skip includes synchronous throws inside async and iterator methods.
+Open virtual and unsealed override call sites also remain unsupported.

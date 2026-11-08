@@ -1,4 +1,3 @@
-using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -15,27 +14,27 @@ namespace Exceptionable.Analyzers.Analysis
             var operation = operationContext.Operation;
             if (!compilationContext.Options.IsEnabled(operation.Syntax.SyntaxTree) ||
                 operationContext.ContainingSymbol is not IMethodSymbol callerMethod ||
-                !MethodAnalysisPolicy.IsSupportedMethod(callerMethod) ||
+                !compilationContext.IsSupportedMethod(callerMethod) ||
                 !compilationContext.Reachability.IsReachable(operation, callerMethod))
             {
                 return;
             }
 
-            var callerContract = compilationContext.ContractResolver.GetEffectiveContract(callerMethod);
+            var contractResolver = compilationContext.ContractResolver;
             foreach (var targetMethod in OperationTargetResolver.GetTargetMethods(operation))
             {
                 if ((MethodAnalysisPolicy.IsDispatchUncertain(targetMethod) &&
                         targetMethod.ContainingType.TypeKind != TypeKind.Interface) ||
-                    !MethodAnalysisPolicy.IsSupportedMethod(targetMethod) ||
+                    !compilationContext.IsSupportedMethod(targetMethod) ||
                     MethodAnalysisPolicy.IsDeferredReturnType(targetMethod.ReturnType))
                 {
                     continue;
                 }
 
-                var targetContract = compilationContext.ContractResolver.GetEffectiveContract(targetMethod);
+                var targetContract = contractResolver.GetEffectiveContract(targetMethod);
                 foreach (var declaredType in targetContract.DeclaredTypes)
                 {
-                    if (callerContract.DeclaredTypes.Any(type => declaredType.InheritsOrEquals(type)) ||
+                    if (contractResolver.IsExceptionPermitted(callerMethod, declaredType) ||
                         ExceptionFlowAnalysis.IsCaught(operation, declaredType))
                     {
                         continue;
@@ -44,7 +43,7 @@ namespace Exceptionable.Analyzers.Analysis
                     operationContext.ReportDiagnostic(Diagnostic.Create(
                         ExceptionableDiagnostics.CallerViolation,
                         operation.Syntax.GetLocation(),
-                        targetMethod.Name,
+                        targetMethod.GetContractDisplayName(),
                         declaredType.Name));
                 }
             }

@@ -41,11 +41,11 @@ explain why the behavior remains an intentional deviation.
 
 ## Intended repository structure
 
-The repository currently contains the project guidance and design documents;
-the following is the target layout for implementation, not a claim that these
-projects and directories already exist. Keep the structure aligned with
-[DESIGN.md](./DESIGN.md), using the examples and cautions in
+Keep the repository aligned with this layout and with
+[DESIGN.md](./DESIGN.md). Use the examples and cautions in
 [RESEARCH.md](./RESEARCH.md) as guidance rather than binding requirements.
+Cake tasks live in `build.cake`; put shared Cake modules under `build/` when
+a task is split out of that file.
 
 ```text
 /

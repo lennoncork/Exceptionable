@@ -24,8 +24,11 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <Description>An Roslyn analyzer for handling exceptions in .NET projects.</Description>
-        <ProjectUrl>https://github.com/lennoncork/Exceptionable</ProjectUrl>
+        <Description>A Roslyn analyzer for declared exception contracts in .NET projects.</Description>
+        <PackageProjectUrl>https://github.com/lennoncork/Exceptionable</PackageProjectUrl>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <RepositoryUrl>https://github.com/lennoncork/Exceptionable</RepositoryUrl>
+        <UseFullSemVerForNuGet>false</UseFullSemVerForNuGet>
         <License>MIT</License>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryType>GIT</RepositoryType>

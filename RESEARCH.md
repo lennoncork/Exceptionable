@@ -269,3 +269,10 @@ search targets; it does not prescribe a particular Roslyn API version.
 - Recheck all external sources when selecting package versions or publishing:
   the repository links here are pinned snapshots, while current tooling,
   frameworks, and host support may have changed.
+- GitVersion 6 renames the older deployment modes. `ContinuousDelivery` is the
+  mode that promotes commit distance into the prerelease number.
+  `ManualDeployment` leaves that distance in `+` build metadata, which NuGet
+  does not keep as part of the package identity. See
+  [Version incrementing](https://gitversion.net/docs/reference/version-increments)
+  and the [deployment mode](https://gitversion.net/api/GitVersion.VersionCalculation/DeploymentMode/)
+  names.

@@ -17,9 +17,19 @@ namespace Exceptionable.Analyzers.Analysis
                 return false;
             }
 
-            return !method.DeclaringSyntaxReferences
-                .Select(reference => reference.GetSyntax())
-                .Any(syntax => syntax.DescendantNodesAndSelf().OfType<YieldStatementSyntax>().Any());
+            foreach (SyntaxReference reference in method.DeclaringSyntaxReferences)
+            {
+                SyntaxNode syntax = reference.GetSyntax();
+                foreach (YieldStatementSyntax yieldStatement in syntax.DescendantNodes().OfType<YieldStatementSyntax>())
+                {
+                    if (!isNestedFunctionYield(yieldStatement, syntax))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         internal static bool IsDeferredReturnType(ITypeSymbol returnType)
@@ -39,7 +49,34 @@ namespace Exceptionable.Analyzers.Analysis
                         namedType.Name == "IAsyncEnumerable" || namedType.Name == "IAsyncEnumerator"));
         }
 
-        internal static bool IsDispatchUncertain(IMethodSymbol method) =>
-            method.IsVirtual || method.IsAbstract || method.IsOverride;
+        internal static bool IsDispatchUncertain(IMethodSymbol method)
+        {
+            if (method.IsAbstract)
+            {
+                return true;
+            }
+
+            if (!method.IsVirtual && !method.IsOverride)
+            {
+                return false;
+            }
+
+            return !method.IsSealed && !method.ContainingType.IsSealed;
+        }
+
+        private static bool isNestedFunctionYield(SyntaxNode yieldStatement, SyntaxNode methodSyntax)
+        {
+            for (SyntaxNode? current = yieldStatement.Parent;
+                current is not null && !ReferenceEquals(current, methodSyntax);
+                current = current.Parent)
+            {
+                if (current is LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

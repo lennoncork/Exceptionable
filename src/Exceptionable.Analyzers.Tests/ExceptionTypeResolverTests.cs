@@ -1,4 +1,5 @@
 using Exceptionable.Analyzers.Contracts;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Exceptionable.Analyzers.Tests
 {
@@ -17,28 +18,53 @@ namespace Second
 namespace Other
 {
     public class NotAnException { }
+    public class CustomException { }
+}
+namespace Nested
+{
+    public class Outer
+    {
+        public class NestedException : System.Exception { }
+    }
+}
+public class Outer
+{
+    public class NestedException : System.Exception { }
 }";
 
         [Test]
         public void ResolveExceptionType_ResolvesFullyQualifiedAndUniqueShortNames()
         {
-            var compilation = TestCompilation.Create(source);
-            var resolver = new ExceptionTypeResolver(compilation);
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            ExceptionTypeResolver resolver = new ExceptionTypeResolver(compilation);
 
             Assert.That(resolver.ResolveExceptionType("First.CustomException")?.Name, Is.EqualTo("CustomException"));
-            Assert.That(resolver.ResolveExceptionType("CustomException")?.Name, Is.EqualTo("CustomException"));
+            Assert.That(resolver.ResolveExceptionType("CustomException")?.ToDisplayString(), Is.EqualTo("First.CustomException"));
             Assert.That(resolver.ResolveExceptionType("Exception")?.ToDisplayString(), Is.EqualTo("System.Exception"));
+            Assert.That(
+                resolver.ResolveExceptionType("Outer.NestedException")?.ToDisplayString(),
+                Is.EqualTo("Outer.NestedException"));
+            Assert.That(
+                resolver.ResolveExceptionType("Outer+NestedException")?.ToDisplayString(),
+                Is.EqualTo("Outer.NestedException"));
+            Assert.That(
+                resolver.ResolveExceptionType("Nested.Outer.NestedException")?.ToDisplayString(),
+                Is.EqualTo("Nested.Outer.NestedException"));
+            Assert.That(
+                resolver.ResolveExceptionType("Nested.Outer+NestedException")?.ToDisplayString(),
+                Is.EqualTo("Nested.Outer.NestedException"));
         }
 
         [Test]
         public void ResolveExceptionType_RejectsAmbiguousAndNonExceptionNames()
         {
-            var compilation = TestCompilation.Create(source);
-            var resolver = new ExceptionTypeResolver(compilation);
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            ExceptionTypeResolver resolver = new ExceptionTypeResolver(compilation);
 
             Assert.That(resolver.ResolveExceptionType("SharedException"), Is.Null);
             Assert.That(resolver.ResolveExceptionType("Other.NotAnException"), Is.Null);
             Assert.That(resolver.ResolveExceptionType("MissingException"), Is.Null);
+            Assert.That(resolver.ResolveExceptionType("NestedException"), Is.Null);
         }
     }
 }

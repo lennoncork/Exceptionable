@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -8,13 +9,63 @@ namespace Exceptionable.Analyzers.Contracts
     internal sealed class ContractResolver
     {
         private readonly ExceptionTypeResolver exceptionTypeResolver;
+        private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> effectiveContracts =
+            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<IMethodSymbol, ImmutableArray<ExceptionContract>> implementedInterfaceContracts =
+            new(SymbolEqualityComparer.Default);
 
         internal ContractResolver(ExceptionTypeResolver exceptionTypeResolver)
         {
             this.exceptionTypeResolver = exceptionTypeResolver;
         }
 
-        internal ExceptionContract GetEffectiveContract(IMethodSymbol method)
+        internal ExceptionContract GetEffectiveContract(IMethodSymbol method) =>
+            this.effectiveContracts.GetOrAdd(method, this.resolveEffectiveContract);
+
+        internal ImmutableArray<ExceptionContract> GetImplementedInterfaceContracts(IMethodSymbol method) =>
+            this.implementedInterfaceContracts.GetOrAdd(method, this.resolveImplementedInterfaceContracts);
+
+        internal bool HasApplicableContract(IMethodSymbol method) =>
+            this.GetEffectiveContract(method).HasContract ||
+            this.GetImplementedInterfaceContracts(method).Length > 0;
+
+        internal bool IsEffectivelyDoesNotThrow(IMethodSymbol method) =>
+            this.GetEffectiveContract(method).IsDoesNotThrow ||
+            this.GetImplementedInterfaceContracts(method).Any(contract => contract.IsDoesNotThrow);
+
+        internal bool IsExceptionPermitted(IMethodSymbol method, ITypeSymbol exceptionType)
+        {
+            if (this.IsEffectivelyDoesNotThrow(method))
+            {
+                return false;
+            }
+
+            var constraints = this.getDeclaredConstraints(method);
+            return constraints.Length > 0 &&
+                constraints.All(contract => contract.DeclaredTypes.Any(exceptionType.InheritsOrEquals));
+        }
+
+        internal ExceptionContract GetDirectContract(ISymbol symbol)
+        {
+            var attributes = symbol.GetAttributes();
+            var doesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
+            var declaredTypes = attributes
+                .Where(ThrowsAttributeReader.IsThrows)
+                .Select(ThrowsAttributeReader.GetThrowsName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(this.exceptionTypeResolver.ResolveExceptionType)
+                .Where(type => type is not null)
+                .Cast<INamedTypeSymbol>()
+                .ToImmutableArray();
+
+            return doesNotThrow
+                ? new ExceptionContract(true, [])
+                : declaredTypes.Length > 0
+                    ? new ExceptionContract(false, declaredTypes)
+                    : ExceptionContract.Unspecified;
+        }
+
+        private ExceptionContract resolveEffectiveContract(IMethodSymbol method)
         {
             for (IMethodSymbol? current = method; current is not null; current = current.OverriddenMethod)
             {
@@ -37,11 +88,11 @@ namespace Exceptionable.Analyzers.Contracts
             return ExceptionContract.Unspecified;
         }
 
-        internal ImmutableArray<ExceptionContract> GetImplementedInterfaceContracts(IMethodSymbol method)
+        private ImmutableArray<ExceptionContract> resolveImplementedInterfaceContracts(IMethodSymbol method)
         {
             if (method.ContainingType.TypeKind == TypeKind.Interface)
             {
-                return ImmutableArray<ExceptionContract>.Empty;
+                return [];
             }
 
             var interfaceMembers = method.ExplicitInterfaceImplementations
@@ -50,16 +101,14 @@ namespace Exceptionable.Analyzers.Contracts
             var seenMembers = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
             var contracts = ImmutableArray.CreateBuilder<ExceptionContract>();
 
-            foreach (var interfaceMember in interfaceMembers)
+            foreach (IMethodSymbol? interfaceMember in interfaceMembers)
             {
                 if (!seenMembers.Add(interfaceMember))
                 {
                     continue;
                 }
 
-                var implementation = method.ContainingType.FindImplementationForInterfaceMember(interfaceMember)
-                    as IMethodSymbol;
-                if (implementation is null || !implementation.IsSameMethod(method))
+                if (method.ContainingType.FindImplementationForInterfaceMember(interfaceMember) is not IMethodSymbol implementation || !implementation.IsSameMethod(method))
                 {
                     continue;
                 }
@@ -74,24 +123,24 @@ namespace Exceptionable.Analyzers.Contracts
             return contracts.ToImmutable();
         }
 
-        internal ExceptionContract GetDirectContract(ISymbol symbol)
+        private ImmutableArray<ExceptionContract> getDeclaredConstraints(IMethodSymbol method)
         {
-            var attributes = symbol.GetAttributes();
-            var doesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
-            var declaredTypes = attributes
-                .Where(ThrowsAttributeReader.IsThrows)
-                .Select(ThrowsAttributeReader.GetThrowsName)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Select(this.exceptionTypeResolver.ResolveExceptionType)
-                .Where(type => type is not null)
-                .Cast<INamedTypeSymbol>()
-                .ToImmutableArray();
+            var constraints = ImmutableArray.CreateBuilder<ExceptionContract>();
+            var ownContract = this.GetEffectiveContract(method);
+            if (ownContract.HasContract && !ownContract.IsDoesNotThrow)
+            {
+                constraints.Add(ownContract);
+            }
 
-            return doesNotThrow
-                ? new ExceptionContract(true, ImmutableArray<INamedTypeSymbol>.Empty)
-                : declaredTypes.Length > 0
-                    ? new ExceptionContract(false, declaredTypes)
-                    : ExceptionContract.Unspecified;
+            foreach (ExceptionContract interfaceContract in this.GetImplementedInterfaceContracts(method))
+            {
+                if (interfaceContract.HasContract && !interfaceContract.IsDoesNotThrow)
+                {
+                    constraints.Add(interfaceContract);
+                }
+            }
+
+            return constraints.ToImmutable();
         }
     }
 }

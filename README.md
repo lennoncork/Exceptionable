@@ -7,20 +7,22 @@ Exceptionable consists of two packages:
 - `Exceptionable.Analyzers` checks explicitly declared synchronous exception
   contracts.
 
-As checked on 2026-11-07, the only version listed on NuGet.org for both
-[Exceptionable](https://www.nuget.org/packages/Exceptionable/) and
-[Exceptionable.Analyzers](https://www.nuget.org/packages/Exceptionable.Analyzers/)
-is the prerelease `0.0.1-feat-initial-exceptionable.1`. Pin that version when
-installing the published packages:
+Install the version published for the GitHub Release you want. GitVersion
+assigns that version from the release tag, and package versions do not include
+SemVer build metadata. Commits that are not on a release tag get a prerelease
+number that changes with each commit, so later commits do not reuse an earlier
+package identity.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Exceptionable" Version="0.0.1-feat-initial-exceptionable.1" />
+  <PackageReference Include="Exceptionable" Version="0.1.0" />
   <PackageReference Include="Exceptionable.Analyzers"
-                    Version="0.0.1-feat-initial-exceptionable.1"
+                    Version="0.1.0"
                     PrivateAssets="all" />
 </ItemGroup>
 ```
+
+Replace `0.1.0` with the version from the GitHub Release.
 
 Reference `Exceptionable` wherever contracts are declared, and add
 `Exceptionable.Analyzers` to projects where analysis should run. Keeping the
@@ -71,8 +73,8 @@ dotnet cake build.cake --target=Validate
 ```
 
 The validation target also packs both libraries and builds the consumer sample
-against those local packages, checking that the packaged analyzer reports its
-expected EXC002 and EXC003 diagnostics. GitVersion derives local package
+against only those local packages, checking that the packaged analyzer reports
+its expected EXC002 and EXC003 diagnostics. GitVersion derives local package
 versions from Git history; those build outputs are not evidence of a public
 release. Published stable and prerelease GitHub Releases are published to
 NuGet.org. Use GitVersion-compatible SemVer tags, such as `v1.0.0` or

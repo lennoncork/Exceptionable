@@ -12,7 +12,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsEnabled_UsesProjectSettingWhenNoFileSettingExists()
         {
-            var options = new AnalysisOptions(new TestOptionsProvider(
+            AnalysisOptions options = new AnalysisOptions(new TestOptionsProvider(
                 projectSetting: "ENABLE",
                 fileSetting: null));
 
@@ -22,7 +22,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsEnabled_FileSettingOverridesProjectSetting()
         {
-            var options = new AnalysisOptions(new TestOptionsProvider(
+            AnalysisOptions options = new AnalysisOptions(new TestOptionsProvider(
                 projectSetting: "enable",
                 fileSetting: "disable"));
 
@@ -32,11 +32,21 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsEnabled_DefaultsToDisabled()
         {
-            var options = new AnalysisOptions(new TestOptionsProvider(
+            AnalysisOptions options = new AnalysisOptions(new TestOptionsProvider(
                 projectSetting: null,
                 fileSetting: null));
 
             Assert.That(options.IsEnabled(CSharpSyntaxTree.ParseText(string.Empty)), Is.False);
+        }
+
+        [Test]
+        public void IsEnabled_InvalidFileValueDoesNotOverrideProjectSetting()
+        {
+            AnalysisOptions options = new AnalysisOptions(new TestOptionsProvider(
+                projectSetting: "enable",
+                fileSetting: "enabled"));
+
+            Assert.That(options.IsEnabled(CSharpSyntaxTree.ParseText(string.Empty)), Is.True);
         }
 
         private sealed class TestOptionsProvider : AnalyzerConfigOptionsProvider
@@ -65,7 +75,7 @@ namespace Exceptionable.Analyzers.Tests
             internal TestOptions(string key, string? value)
             {
                 this.values = value is null
-                    ? ImmutableDictionary<string, string>.Empty
+                    ? []
                     : ImmutableDictionary<string, string>.Empty.Add(key, value);
             }
 

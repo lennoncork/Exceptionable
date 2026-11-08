@@ -69,12 +69,12 @@ Task("Consumer")
     {
         var buildLog = MakeAbsolute(File("./.output/consumer-build.log")).FullPath;
         var consumerPackages = MakeAbsolute(Directory("./.output/consumer-packages")).FullPath;
+        var localPackages = MakeAbsolute(Directory("./.packages")).FullPath;
         DotNetBuild("./samples/Exceptionable.Consumer/Exceptionable.Consumer.csproj", new DotNetBuildSettings
         {
             Configuration = configuration,
             ArgumentCustomization = args => args
-                .Append("--source")
-                .AppendQuoted(MakeAbsolute(Directory("./.packages")).FullPath)
+                .Append($"/p:RestoreSources=\"{localPackages}\"")
                 .Append($"/p:RestorePackagesPath=\"{consumerPackages}\"")
                 .Append("--verbosity")
                 .Append("normal")

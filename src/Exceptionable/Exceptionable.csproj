@@ -9,7 +9,6 @@
     <Authors>Exceptionable</Authors>
     <Description>Public attributes for declaring exception contracts.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net481'">

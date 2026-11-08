@@ -15,16 +15,35 @@ namespace Exceptionable.Analyzers.Configuration
 
         internal bool IsEnabled(SyntaxTree tree)
         {
-            var treeOptions = this.optionsProvider.GetOptions(tree);
-            if (treeOptions.TryGetValue("exceptionable_analysis", out var treeValue))
+            AnalyzerConfigOptions treeOptions = this.optionsProvider.GetOptions(tree);
+            if (treeOptions.TryGetValue("exceptionable_analysis", out var treeValue) &&
+                tryParse(treeValue, out var treeEnabled))
             {
-                return string.Equals(treeValue, "enable", StringComparison.OrdinalIgnoreCase);
+                return treeEnabled;
             }
 
             return this.optionsProvider.GlobalOptions.TryGetValue(
                     "build_property.Exceptionable",
                     out var globalValue) &&
                 string.Equals(globalValue, "enable", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool tryParse(string value, out bool enabled)
+        {
+            if (string.Equals(value, "enable", StringComparison.OrdinalIgnoreCase))
+            {
+                enabled = true;
+                return true;
+            }
+
+            if (string.Equals(value, "disable", StringComparison.OrdinalIgnoreCase))
+            {
+                enabled = false;
+                return true;
+            }
+
+            enabled = false;
+            return false;
         }
     }
 }

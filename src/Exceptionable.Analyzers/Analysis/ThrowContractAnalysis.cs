@@ -1,4 +1,3 @@
-using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -16,7 +15,7 @@ namespace Exceptionable.Analyzers.Analysis
             if (operationContext.Operation is not IThrowOperation throwOperation ||
                 !compilationContext.Options.IsEnabled(throwOperation.Syntax.SyntaxTree) ||
                 operationContext.ContainingSymbol is not IMethodSymbol containingMethod ||
-                !MethodAnalysisPolicy.IsSupportedMethod(containingMethod) ||
+                !compilationContext.IsSupportedMethod(containingMethod) ||
                 !compilationContext.Reachability.IsReachable(throwOperation, containingMethod))
             {
                 return;
@@ -40,27 +39,21 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            var contract = compilationContext.ContractResolver.GetEffectiveContract(containingMethod);
-            var interfaceContracts =
-                compilationContext.ContractResolver.GetImplementedInterfaceContracts(containingMethod);
-            if ((!contract.HasContract && interfaceContracts.Length == 0) ||
+            var contractResolver = compilationContext.ContractResolver;
+            if (!contractResolver.HasApplicableContract(containingMethod) ||
                 ExceptionFlowAnalysis.IsCaught(throwOperation, exceptionType))
             {
                 return;
             }
 
-            if (contract.IsDoesNotThrow || interfaceContracts.Any(interfaceContract => interfaceContract.IsDoesNotThrow))
+            if (contractResolver.IsEffectivelyDoesNotThrow(containingMethod))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.DoesNotThrowEscapes,
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.Name));
             }
-            else if ((contract.HasContract &&
-                        !contract.DeclaredTypes.Any(declaredType => exceptionType.InheritsOrEquals(declaredType))) ||
-                interfaceContracts.Any(interfaceContract =>
-                    !interfaceContract.IsDoesNotThrow &&
-                    !interfaceContract.DeclaredTypes.Any(declaredType => exceptionType.InheritsOrEquals(declaredType))))
+            else if (!contractResolver.IsExceptionPermitted(containingMethod, exceptionType))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.ThrowsMismatch,
