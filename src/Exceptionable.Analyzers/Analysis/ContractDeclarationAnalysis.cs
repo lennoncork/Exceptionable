@@ -13,24 +13,27 @@ namespace Exceptionable.Analyzers.Analysis
             SymbolAnalysisContext symbolContext,
             ExceptionableCompilationContext compilationContext)
         {
-            if (symbolContext.Symbol is not IMethodSymbol && symbolContext.Symbol is not INamedTypeSymbol)
+            if (symbolContext.Symbol is not IMethodSymbol &&
+                symbolContext.Symbol is not INamedTypeSymbol &&
+                symbolContext.Symbol is not IPropertySymbol &&
+                symbolContext.Symbol is not IEventSymbol)
             {
                 return;
             }
 
-            var symbol = symbolContext.Symbol;
+            ISymbol symbol = symbolContext.Symbol;
             if (!symbol.DeclaringSyntaxReferences.Any())
             {
                 return;
             }
 
-            var attributes = symbol.GetAttributes();
-            var hasDoesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
+            ImmutableArray<AttributeData> attributes = symbol.GetAttributes();
+            bool hasDoesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
             var throwsAttributes = attributes.Where(ThrowsAttributeReader.IsThrows).ToImmutableArray();
 
             if (hasDoesNotThrow && throwsAttributes.Length > 0)
             {
-                var attributeReference = throwsAttributes
+                SyntaxReference? attributeReference = throwsAttributes
                     .Select(attribute => attribute.ApplicationSyntaxReference)
                     .FirstOrDefault(reference => reference is not null &&
                         compilationContext.Options.IsEnabled(reference.SyntaxTree));
@@ -42,23 +45,38 @@ namespace Exceptionable.Analyzers.Analysis
                 }
             }
 
-            foreach (var attribute in throwsAttributes)
+            foreach (AttributeData? attribute in throwsAttributes)
             {
-                var attributeReference = attribute.ApplicationSyntaxReference;
+                SyntaxReference? attributeReference = attribute.ApplicationSyntaxReference;
                 if (attributeReference is null ||
                     !compilationContext.Options.IsEnabled(attributeReference.SyntaxTree))
                 {
                     continue;
                 }
 
-                if (!ThrowsAttributeReader.TryGetThrowsName(attribute, out var throwsName) ||
-                    compilationContext.ExceptionTypeResolver.ResolveExceptionType(throwsName) is null)
+                if (!ThrowsAttributeReader.TryGetThrowsName(attribute, out string? throwsName))
                 {
                     symbolContext.ReportDiagnostic(Diagnostic.Create(
                         ExceptionableDiagnostics.ThrowsUsage,
                         attributeReference.GetSyntax().GetLocation(),
-                        ThrowsAttributeReader.GetThrowsName(attribute)));
+                        string.Empty,
+                        "is not a valid exception type in this compilation"));
+                    continue;
                 }
+
+                ExceptionTypeResolution resolution = compilationContext.ExceptionTypeResolver.Resolve(throwsName);
+                if (resolution.Type is not null)
+                {
+                    continue;
+                }
+
+                symbolContext.ReportDiagnostic(Diagnostic.Create(
+                    ExceptionableDiagnostics.ThrowsUsage,
+                    attributeReference.GetSyntax().GetLocation(),
+                    throwsName,
+                    resolution.IsAmbiguous
+                        ? "is ambiguous"
+                        : "is not a valid exception type in this compilation"));
             }
         }
     }

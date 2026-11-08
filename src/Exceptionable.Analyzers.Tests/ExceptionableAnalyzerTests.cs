@@ -192,7 +192,7 @@ namespace Exceptionable.Analyzers.Tests
         {
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(AnnotatedPropertyAccessors_ReportExc003)));
 
-            var messages = diagnostics
+            string[] messages = diagnostics
                 .Where(diagnostic => diagnostic.Id == "EXC003")
                 .Select(diagnostic => diagnostic.GetMessage())
                 .ToArray();
@@ -214,7 +214,7 @@ namespace Exceptionable.Analyzers.Tests
         {
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(AnnotatedEventAccessors_ReportExc003)));
 
-            var messages = diagnostics
+            string[] messages = diagnostics
                 .Where(diagnostic => diagnostic.Id == "EXC003")
                 .Select(diagnostic => diagnostic.GetMessage())
                 .ToArray();
@@ -301,7 +301,8 @@ namespace Exceptionable.Analyzers.Tests
         {
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(AmbiguousShortName_ReportsExc004)));
 
-            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC004"));
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC004");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("is ambiguous"));
         }
 
         [Test]
@@ -540,16 +541,308 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostics, Is.Empty);
         }
 
+        [Test]
+        public void BaseVirtualCall_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(BaseVirtualCall_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'M'"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC001"));
+        }
+
+        [Test]
+        public void BasePropertyAccess_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(BasePropertyAccess_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void NameOfProperty_DoesNotReportExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(NameOfProperty_DoesNotReportExc003)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void ThrowNull_ReportsNullReferenceException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowNull_ReportsNullReferenceException)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC001");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'NullReferenceException'"));
+        }
+
+        [Test]
+        public void ThrowDefaultException_ReportsNullReferenceException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowDefaultException_ReportsNullReferenceException)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC001");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'NullReferenceException'"));
+        }
+
+        [Test]
+        public void ThrowNullCaught_DoesNotReportExc001()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowNullCaught_DoesNotReportExc001)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC001"));
+        }
+
+        [Test]
+        public void LocalFunctionThrow_DoesNotEscapeOuterMethod()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(LocalFunctionThrow_DoesNotEscapeOuterMethod)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void LambdaThrow_DoesNotEscapeOuterMethod()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(LambdaThrow_DoesNotEscapeOuterMethod)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void DeconstructionAssignment_ReportsSetterExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DeconstructionAssignment_ReportsSetterExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Value setter"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("InvalidOperationException"));
+        }
+
+        [Test]
+        public void DeconstructMethod_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DeconstructMethod_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'Deconstruct'"));
+        }
+
+        [Test]
+        public void FieldInitializer_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(FieldInitializer_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void PropertyInitializer_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(PropertyInitializer_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void FieldInitializer_PermittedByConstructor_DoesNotReportExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(FieldInitializer_PermittedByConstructor_DoesNotReportExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void ThisChainedConstructor_ReportsExc003ForConstructorCall()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThisChainedConstructor_ReportsExc003ForConstructorCall)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("C constructor"));
+            Assert.That(
+                diagnostic.Location.SourceTree!.GetText().GetSubText(diagnostic.Location.SourceSpan).ToString(),
+                Does.Contain("this(0)"));
+        }
+
+        [Test]
+        public void RecordCopyConstructor_DoesNotAttributeInitializer()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(RecordCopyConstructor_DoesNotAttributeInitializer)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void StaticFieldInitializer_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(StaticFieldInitializer_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void ForeachMoveNext_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ForeachMoveNext_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'MoveNext'"));
+            Assert.That(
+                diagnostic.Location.SourceTree!.GetText().GetSubText(diagnostic.Location.SourceSpan).ToString(),
+                Is.EqualTo("foreach"));
+        }
+
+        [Test]
+        public void ForeachGetEnumerator_ReportsDeferredReturnType()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ForeachGetEnumerator_ReportsDeferredReturnType)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'GetEnumerator'"));
+        }
+
+        [Test]
+        public void UsingDispose_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UsingDispose_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'Dispose'"));
+        }
+
+        [Test]
+        public void UsingStatementDispose_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UsingStatementDispose_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void UsingDispose_CaughtDoesNotReportExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UsingDispose_CaughtDoesNotReportExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void ExplicitDispose_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ExplicitDispose_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void OperatorCall_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(OperatorCall_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("operator +"));
+        }
+
+        [Test]
+        public void OperatorBody_ReportsExc001()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(OperatorBody_ReportsExc001)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC001"));
+        }
+
+        [Test]
+        public void ConversionOperator_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ConversionOperator_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("explicit conversion"));
+        }
+
+        [Test]
+        public void BuiltInArithmetic_DoesNotReportExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(BuiltInArithmetic_DoesNotReportExc003)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void PropertyAttribute_ReportsExc003ForAccessors()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(PropertyAttribute_ReportsExc003ForAccessors)));
+
+            string[] messages = diagnostics
+                .Where(diagnostic => diagnostic.Id == "EXC003")
+                .Select(diagnostic => diagnostic.GetMessage())
+                .ToArray();
+            Assert.That(messages, Has.Length.EqualTo(2));
+            Assert.That(messages, Has.Some.Contains("Value getter"));
+            Assert.That(messages, Has.Some.Contains("Value setter"));
+        }
+
+        [Test]
+        public void AccessorAttribute_OverridesPropertyAttribute()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(AccessorAttribute_OverridesPropertyAttribute)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Value setter"));
+        }
+
+        [Test]
+        public void InterfacePropertyAttribute_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(InterfacePropertyAttribute_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void EventAttribute_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(EventAttribute_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Changed add accessor"));
+        }
+
+        [Test]
+        public void ConditionalDoesNotThrow_ReportsExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ConditionalDoesNotThrow_ReportsExc006)));
+
+            Assert.That(diagnostics.Count(diagnostic => diagnostic.Id == "EXC006"), Is.EqualTo(4));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void BaseDoesNotThrowCall_ReportsExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(BaseDoesNotThrowCall_ReportsExc006)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC006");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'Safe'"));
+        }
+
+        [Test]
+        public void ConditionalWithThrow_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ConditionalWithThrow_DoesNotReportExc006)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC006"));
+        }
+
         private static Diagnostic[] getDiagnostics(
             string source,
             string? projectSetting = "enable",
             string? fileSetting = "enable",
             bool includeExceptionableAttributes = true)
         {
-            List<PortableExecutableReference> references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            List<PortableExecutableReference> references = [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(Path.PathSeparator)
-                .Select(path => MetadataReference.CreateFromFile(path))
-                .ToList();
+                .Select(path => MetadataReference.CreateFromFile(path))];
 
             if (includeExceptionableAttributes)
             {
@@ -563,10 +856,10 @@ namespace Exceptionable.Analyzers.Tests
                 references: references,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            AnalyzerOptions options = new AnalyzerOptions(
+            AnalyzerOptions options = new(
                 [],
                 new TestAnalyzerConfigOptionsProvider(projectSetting, fileSetting));
-            var compilerErrors = compilation.GetDiagnostics()
+            string[] compilerErrors = compilation.GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .Select(diagnostic => diagnostic.ToString())
                 .ToArray();

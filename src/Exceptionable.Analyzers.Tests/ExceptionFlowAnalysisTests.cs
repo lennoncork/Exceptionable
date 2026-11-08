@@ -1,6 +1,7 @@
 using System.Linq;
 using Exceptionable.Analyzers.Analysis;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -21,9 +22,9 @@ class C
         catch (InvalidOperationException) { }
     }
 }";
-            var compilation = TestCompilation.Create(source);
-            var throwOperation = getThrowOperation(compilation);
-            var exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            IThrowOperation throwOperation = getThrowOperation(compilation);
+            INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
 
             Assert.That(ExceptionFlowAnalysis.IsCaught(throwOperation, exceptionType), Is.True);
         }
@@ -41,9 +42,9 @@ class C
         catch { throw new InvalidOperationException(); }
     }
 }";
-            var compilation = TestCompilation.Create(source);
-            var throwOperation = getThrowOperation(compilation);
-            var exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            IThrowOperation throwOperation = getThrowOperation(compilation);
+            INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
 
             Assert.That(ExceptionFlowAnalysis.IsCaught(throwOperation, exceptionType), Is.False);
         }
@@ -67,11 +68,10 @@ class C
         catch { throw; }
     }
 }";
-            var compilation = TestCompilation.Create(source);
-            var throws = compilation.SyntaxTrees.Single().GetRoot().DescendantNodes()
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            IThrowOperation[] throws = [.. compilation.SyntaxTrees.Single().GetRoot().DescendantNodes()
                 .OfType<ThrowStatementSyntax>()
-                .Select(node => (IThrowOperation)compilation.GetSemanticModel(node.SyntaxTree).GetOperation(node)!)
-                .ToArray();
+                .Select(node => (IThrowOperation)compilation.GetSemanticModel(node.SyntaxTree).GetOperation(node)!)];
 
             Assert.That(
                 ExceptionFlowAnalysis.GetRethrownExceptionType(throws[0], compilation)?.ToDisplayString(),
@@ -91,17 +91,17 @@ class C
 {
     void M() { throw new CustomException(); }
 }";
-            var compilation = TestCompilation.Create(source);
-            var throwOperation = getThrowOperation(compilation);
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            IThrowOperation throwOperation = getThrowOperation(compilation);
 
             Assert.That(
-                ExceptionFlowAnalysis.GetThrownExceptionType(throwOperation.Exception!)?.Name,
+                ExceptionFlowAnalysis.GetThrownExceptionType(throwOperation.Exception!, compilation)?.Name,
                 Is.EqualTo("CustomException"));
         }
 
         private static IThrowOperation getThrowOperation(Compilation compilation)
         {
-            var node = compilation.SyntaxTrees.Single().GetRoot()
+            ThrowStatementSyntax node = compilation.SyntaxTrees.Single().GetRoot()
                 .DescendantNodes()
                 .OfType<ThrowStatementSyntax>()
                 .Single();

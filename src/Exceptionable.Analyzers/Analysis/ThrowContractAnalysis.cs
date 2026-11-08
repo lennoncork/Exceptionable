@@ -1,3 +1,4 @@
+using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -14,46 +15,52 @@ namespace Exceptionable.Analyzers.Analysis
         {
             if (operationContext.Operation is not IThrowOperation throwOperation ||
                 !compilationContext.Options.IsEnabled(throwOperation.Syntax.SyntaxTree) ||
-                operationContext.ContainingSymbol is not IMethodSymbol containingMethod ||
-                !compilationContext.IsSupportedMethod(containingMethod) ||
-                !compilationContext.Reachability.IsReachable(throwOperation, containingMethod))
+                OperationScope.IsIgnored(throwOperation))
             {
                 return;
             }
 
-            var exceptionType = throwOperation.Exception is null
-                ? null
-                : ExceptionFlowAnalysis.GetThrownExceptionType(throwOperation.Exception);
-            if (exceptionType is null)
+            IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
+                .Where(compilationContext.IsSupportedMethod)
+                .Where(host => compilationContext.Reachability.IsReachable(throwOperation, host))];
+            if (hosts.Length == 0)
             {
-                exceptionType = ExceptionFlowAnalysis.GetRethrownExceptionType(
+                return;
+            }
+
+            ITypeSymbol? exceptionType = throwOperation.Exception is null
+                ? null
+                : ExceptionFlowAnalysis.GetThrownExceptionType(
+                    throwOperation.Exception,
+                    compilationContext.Compilation);
+            exceptionType ??= ExceptionFlowAnalysis.GetRethrownExceptionType(
                     throwOperation,
                     compilationContext.Compilation);
-            }
 
-            var exceptionBaseType = compilationContext.Compilation.GetTypeByMetadataName("System.Exception");
+            INamedTypeSymbol? exceptionBaseType = compilationContext.Compilation.GetTypeByMetadataName("System.Exception");
             if (exceptionType is null ||
                 exceptionBaseType is null ||
-                !exceptionType.InheritsOrEquals(exceptionBaseType))
-            {
-                return;
-            }
-
-            var contractResolver = compilationContext.ContractResolver;
-            if (!contractResolver.HasApplicableContract(containingMethod) ||
+                !exceptionType.InheritsOrEquals(exceptionBaseType) ||
                 ExceptionFlowAnalysis.IsCaught(throwOperation, exceptionType))
             {
                 return;
             }
 
-            if (contractResolver.IsEffectivelyDoesNotThrow(containingMethod))
+            ContractResolver contractResolver = compilationContext.ContractResolver;
+            IMethodSymbol[] applicable = [.. hosts.Where(contractResolver.HasApplicableContract)];
+            if (applicable.Length == 0)
+            {
+                return;
+            }
+
+            if (applicable.Any(contractResolver.IsEffectivelyDoesNotThrow))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.DoesNotThrowEscapes,
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.Name));
             }
-            else if (!contractResolver.IsExceptionPermitted(containingMethod, exceptionType))
+            else if (applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.ThrowsMismatch,

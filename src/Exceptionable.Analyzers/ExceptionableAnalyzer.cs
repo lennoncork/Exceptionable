@@ -37,7 +37,16 @@ namespace Exceptionable.Analyzers
                     OperationKind.Invocation,
                     OperationKind.ObjectCreation,
                     OperationKind.PropertyReference,
-                    OperationKind.EventAssignment);
+                    OperationKind.EventAssignment,
+                    OperationKind.Binary,
+                    OperationKind.Unary,
+                    OperationKind.Increment,
+                    OperationKind.Decrement,
+                    OperationKind.Conversion,
+                    OperationKind.Loop,
+                    OperationKind.Using,
+                    OperationKind.UsingDeclaration,
+                    OperationKind.DeconstructionAssignment);
 
                 startContext.RegisterOperationAction(
                     operationContext => UnnecessaryCatchAnalysis.Analyze(operationContext, compilationContext),
@@ -46,7 +55,9 @@ namespace Exceptionable.Analyzers
                 startContext.RegisterSymbolAction(
                     symbolContext => ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext),
                     SymbolKind.Method,
-                    SymbolKind.NamedType);
+                    SymbolKind.NamedType,
+                    SymbolKind.Property,
+                    SymbolKind.Event);
             });
         }
     }

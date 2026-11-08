@@ -1,6 +1,7 @@
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Exceptionable.Analyzers.Analysis
 {
@@ -10,9 +11,7 @@ namespace Exceptionable.Analyzers.Analysis
         {
             if (method.IsAsync ||
                 method.MethodKind == MethodKind.AnonymousFunction ||
-                method.MethodKind == MethodKind.LocalFunction ||
-                method.MethodKind == MethodKind.UserDefinedOperator ||
-                method.MethodKind == MethodKind.Conversion)
+                method.MethodKind == MethodKind.LocalFunction)
             {
                 return false;
             }
@@ -39,7 +38,7 @@ namespace Exceptionable.Analyzers.Analysis
                 return false;
             }
 
-            var namespaceName = namedType.ContainingNamespace.ToDisplayString();
+            string namespaceName = namedType.ContainingNamespace.ToDisplayString();
             return (namespaceName == "System.Threading.Tasks" &&
                     (namedType.Name == "Task" || namedType.Name == "ValueTask")) ||
                 (namespaceName == "System.Collections" &&
@@ -62,6 +61,29 @@ namespace Exceptionable.Analyzers.Analysis
             }
 
             return !method.IsSealed && !method.ContainingType.IsSealed;
+        }
+
+        internal static bool HasCertainDispatch(IMethodSymbol method, IOperation operation)
+        {
+            if (IsBaseAccess(operation))
+            {
+                return true;
+            }
+
+            return !IsDispatchUncertain(method) || method.ContainingType.TypeKind == TypeKind.Interface;
+        }
+
+        internal static bool IsBaseAccess(IOperation operation)
+        {
+            IOperation? instance = operation switch
+            {
+                IInvocationOperation invocation => invocation.Instance,
+                IMemberReferenceOperation member => member.Instance,
+                IEventAssignmentOperation eventAssignment =>
+                    (eventAssignment.EventReference as IMemberReferenceOperation)?.Instance,
+                _ => null,
+            };
+            return instance?.Syntax is BaseExpressionSyntax;
         }
 
         private static bool isNestedFunctionYield(SyntaxNode yieldStatement, SyntaxNode methodSyntax)

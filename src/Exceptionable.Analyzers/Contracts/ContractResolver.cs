@@ -40,15 +40,15 @@ namespace Exceptionable.Analyzers.Contracts
                 return false;
             }
 
-            var constraints = this.getDeclaredConstraints(method);
+            ImmutableArray<ExceptionContract> constraints = this.getDeclaredConstraints(method);
             return constraints.Length > 0 &&
                 constraints.All(contract => contract.DeclaredTypes.Any(exceptionType.InheritsOrEquals));
         }
 
         internal ExceptionContract GetDirectContract(ISymbol symbol)
         {
-            var attributes = symbol.GetAttributes();
-            var doesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
+            ImmutableArray<AttributeData> attributes = symbol.GetAttributes();
+            bool doesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
             var declaredTypes = attributes
                 .Where(ThrowsAttributeReader.IsThrows)
                 .Select(ThrowsAttributeReader.GetThrowsName)
@@ -69,16 +69,25 @@ namespace Exceptionable.Analyzers.Contracts
         {
             for (IMethodSymbol? current = method; current is not null; current = current.OverriddenMethod)
             {
-                var methodContract = this.GetDirectContract(current);
+                ExceptionContract methodContract = this.GetDirectContract(current);
                 if (methodContract.HasContract)
                 {
                     return methodContract;
+                }
+
+                if (current.AssociatedSymbol is ISymbol associated)
+                {
+                    ExceptionContract associatedContract = this.GetDirectContract(associated);
+                    if (associatedContract.HasContract)
+                    {
+                        return associatedContract;
+                    }
                 }
             }
 
             for (INamedTypeSymbol? type = method.ContainingType; type is not null; type = type.BaseType)
             {
-                var typeContract = this.GetDirectContract(type);
+                ExceptionContract typeContract = this.GetDirectContract(type);
                 if (typeContract.HasContract)
                 {
                     return typeContract;
@@ -95,11 +104,11 @@ namespace Exceptionable.Analyzers.Contracts
                 return [];
             }
 
-            var interfaceMembers = method.ExplicitInterfaceImplementations
+            IEnumerable<IMethodSymbol> interfaceMembers = method.ExplicitInterfaceImplementations
                 .Concat(method.ContainingType.AllInterfaces.SelectMany(
                     type => type.GetMembers().OfType<IMethodSymbol>()));
             var seenMembers = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-            var contracts = ImmutableArray.CreateBuilder<ExceptionContract>();
+            ImmutableArray<ExceptionContract>.Builder contracts = ImmutableArray.CreateBuilder<ExceptionContract>();
 
             foreach (IMethodSymbol? interfaceMember in interfaceMembers)
             {
@@ -113,7 +122,7 @@ namespace Exceptionable.Analyzers.Contracts
                     continue;
                 }
 
-                var contract = this.GetEffectiveContract(interfaceMember);
+                ExceptionContract contract = this.GetEffectiveContract(interfaceMember);
                 if (contract.HasContract)
                 {
                     contracts.Add(contract);
@@ -125,8 +134,8 @@ namespace Exceptionable.Analyzers.Contracts
 
         private ImmutableArray<ExceptionContract> getDeclaredConstraints(IMethodSymbol method)
         {
-            var constraints = ImmutableArray.CreateBuilder<ExceptionContract>();
-            var ownContract = this.GetEffectiveContract(method);
+            ImmutableArray<ExceptionContract>.Builder constraints = ImmutableArray.CreateBuilder<ExceptionContract>();
+            ExceptionContract ownContract = this.GetEffectiveContract(method);
             if (ownContract.HasContract && !ownContract.IsDoesNotThrow)
             {
                 constraints.Add(ownContract);
