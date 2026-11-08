@@ -50,12 +50,22 @@ namespace Exceptionable.Analyzers.Diagnostics
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC005.md");
 
+        internal static readonly DiagnosticDescriptor UnnecessaryTryCatch = new(
+            "EXC006",
+            "Try/catch is unnecessary for a [DoesNotThrow] call",
+            "Try/catch is unnecessary because {0}",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC006.md");
+
         internal static ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             ImmutableArray.Create(
                 DoesNotThrowEscapes,
                 ThrowsMismatch,
                 CallerViolation,
                 ThrowsUsage,
-                ConflictingContracts);
+                ConflictingContracts,
+                UnnecessaryTryCatch);
     }
 }

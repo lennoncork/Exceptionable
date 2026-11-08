@@ -39,6 +39,10 @@ namespace Exceptionable.Analyzers
                     OperationKind.PropertyReference,
                     OperationKind.EventAssignment);
 
+                startContext.RegisterOperationAction(
+                    operationContext => UnnecessaryCatchAnalysis.Analyze(operationContext, compilationContext),
+                    OperationKind.Try);
+
                 startContext.RegisterSymbolAction(
                     symbolContext => ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext),
                     SymbolKind.Method,
