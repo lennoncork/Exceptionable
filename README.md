@@ -1,18 +1,28 @@
 # Exceptionable
 
-Exceptionable consists of two packages:
+[![Build](https://github.com/lennoncork/Exceptionable/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/lennoncork/Exceptionable/actions/workflows/build.yml)
+[![Exceptionable on NuGet](https://img.shields.io/nuget/v/Exceptionable)](https://www.nuget.org/packages/Exceptionable)
+[![Exceptionable downloads](https://img.shields.io/nuget/dt/Exceptionable)](https://www.nuget.org/packages/Exceptionable)
+[![Exceptionable.Analyzers on NuGet](https://img.shields.io/nuget/v/Exceptionable.Analyzers)](https://www.nuget.org/packages/Exceptionable.Analyzers)
+[![Exceptionable.Analyzers downloads](https://img.shields.io/nuget/dt/Exceptionable.Analyzers)](https://www.nuget.org/packages/Exceptionable.Analyzers)
+[![MIT license](https://img.shields.io/github/license/lennoncork/Exceptionable)](./LICENSE)
 
-- `Exceptionable` provides `[Throws<System.IO.IOException>]`,
+Declare synchronous exception contracts in C# and have them checked during
+builds and in the IDE.
+
+Exceptionable consists of two NuGet packages:
+
+- **`Exceptionable`** provides `[Throws<System.IO.IOException>]`,
   `[Throws("System.IO.IOException")]`, and `[DoesNotThrow]` attributes for
-  consumer APIs.
-- `Exceptionable.Analyzers` checks explicitly declared synchronous exception
-  contracts.
+  declaring contracts.
+- **`Exceptionable.Analyzers`** validates those contracts and reports
+  diagnostics for explicit throws, annotated calls, and inferred contracts.
 
-Install the version published for the GitHub Release you want. GitVersion
-assigns that version from the release tag, and package versions do not include
-SemVer build metadata. Commits that are not on a release tag get a prerelease
-number that changes with each commit, so later commits do not reuse an earlier
-package identity.
+## Installation
+
+Install matching versions of both packages. Use the version published for the
+GitHub Release you want; package versions are derived from release tags by
+GitVersion and do not include SemVer build metadata.
 
 ```xml
 <ItemGroup>
@@ -23,17 +33,21 @@ package identity.
 </ItemGroup>
 ```
 
-Replace `0.1.0` with the version from the GitHub Release.
-`AnalyzerReleases.Shipped.md` tracks diagnostic IDs and is not that package
-version.
+Replace `0.1.0` with the version from the GitHub Release. Commits that are not
+on a release tag receive a changing prerelease number, so later commits do not
+reuse an earlier package identity. `AnalyzerReleases.Shipped.md` tracks
+diagnostic IDs; it is not the package version.
 
 Reference `Exceptionable` wherever contracts are declared, and add
 `Exceptionable.Analyzers` to projects where analysis should run. Keeping the
 analyzer reference private prevents it from becoming a dependency of a
-library's consumers; the attributes package does not depend on the analyzer.
-The analyzer package is deployed as a Roslyn analyzer, so it runs in normal
-command-line builds and IDE builds. Analysis is disabled by default. Enable it
-with:
+library's consumers. The attributes package does not depend on the analyzer.
+The analyzer is deployed as a Roslyn analyzer and runs in command-line and IDE
+builds.
+
+## Configuration
+
+Analysis is disabled by default. Enable it for a project with:
 
 ```xml
 <PropertyGroup>
@@ -51,73 +65,89 @@ exceptionable_analysis = enable
 exceptionable_analysis = disable
 ```
 
-C# has no `#exceptionable` directive. That spelling is a compiler error.
-Per-file control is `exceptionable_analysis`.
+C# has no `#exceptionable` directive; that spelling is a compiler error.
+Per-file control uses `exceptionable_analysis`.
 
-Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings and
-does not enable analysis by itself.
+Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings.
+Severity settings do not enable analysis.
+
+## Compatibility
 
 The analyzer package targets .NET Standard 2.0 and is built against Roslyn
 4.14. It loads in Visual Studio 2022 17.14 or later and in .NET SDK builds
 that include that compiler or a newer one. The attributes library supports
 .NET 10 and .NET Framework 4.8.1 consumers. `[Throws<TException>]` is a
-generic attribute, so applying it requires .NET 7 or later. A .NET Framework
-4.8.1 consumer uses the string form.
+generic attribute and requires .NET 7 or later; .NET Framework 4.8.1 consumers
+should use the string form.
 
-The analyzer checks interface contracts at interface-typed call
-sites and validates source implementations against all mapped interface
-contracts. It trusts external implementations and does not validate a method
-inherited from a base class that does not itself implement the interface.
-General class virtual/override dispatch remains unsupported. `base` access is
-checked as the selected member. Attributes apply to classes and structs, not
-to an interface type; annotate each interface member. A derived interface
-member that redeclares a base member and has no contract of its own keeps
-the base contract.
+## Analyzer behavior
 
-`[Throws<TException>]` requires `TException` to derive from `System.Exception`.
-The string form accepts a metadata name, a dotted nested name, or an
-unambiguous short name. The analyzer rejects a name or type argument that does
-not identify a type derived from `System.Exception`.
+The analyzer checks explicit throws against declared contracts and annotated
+calls against the caller's contract. A reachable uncaught throw is inferred
+as a `[Throws]` contract for that member. An explicit `[Throws]` or
+`[DoesNotThrow]` replaces inference. The source generator writes inferred
+contracts into the compiled assembly, allowing a consuming project that
+references that assembly and enables analysis to report EXC003 without the
+library's source.
+
+`[Throws<TException>]` requires `TException` to derive from
+`System.Exception`. The string form accepts a metadata name, a dotted nested
+name, or an unambiguous short name. The analyzer rejects a name or type
+argument that does not identify a type derived from `System.Exception`.
 
 `[Throws]` and `[DoesNotThrow]` may be applied to properties, indexers, and
-events. An accessor attribute overrides that member contract. The analyzer
+events. An accessor attribute overrides the member contract. The analyzer
 also checks user-defined operators and conversions, field and property
 initializers, synchronous `foreach` and `using` pattern methods, and
 deconstruction. `throw null` is reported as `NullReferenceException`.
 `nameof`, local functions, and lambdas are not treated as throws of the
 enclosing method. Diagnostic messages use namespace-qualified exception
 names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
-call inside `[DoesNotThrow]`, are EXC003. A reachable uncaught throw is an
-inferred `[Throws]` contract for that member. An explicit `[Throws]` or
-`[DoesNotThrow]` replaces the inference. When the body later throws a
-different known exception, EXC002 reports the new throw and EXC008 reports
-the declared type that no longer escapes. The analyzer package includes a
-source generator that writes each inferred contract into the compiled
-assembly. A consuming project that references that assembly and enables
-analysis reports EXC003 from the recorded contract, without the library's
-source. When nullable annotations make a constructor `ArgumentNullException`
-redundant, EXC007 warns to remove it and that throw is not inferred.
+call inside `[DoesNotThrow]`, are EXC003. When a body later throws a different
+known exception, EXC002 reports the new throw and EXC008 reports the declared
+type that no longer escapes. When nullable annotations make a constructor's
+`ArgumentNullException` redundant, EXC007 warns to remove it and that throw
+is not inferred.
 
-Rule reference: [`docs/README.md`](./docs/README.md).
+Interface contracts are checked at interface-typed call sites, and source
+implementations are validated against all mapped interface contracts. The
+analyzer trusts external implementations and does not validate a method
+inherited from a base class that does not itself implement the interface.
+General class virtual/override dispatch is not supported. `base` access is
+checked as the selected member. Attributes apply to classes and structs, not
+to an interface type; annotate each interface member. A derived interface
+member that redeclares a base member and has no contract of its own keeps
+the base contract.
 
-`[Throws]` currently covers synchronous exceptions only; it does not describe
-exceptions observed when awaiting a task or enumerating an iterator. Async and
-iterator bodies and recognized deferred call sites (including `Task`,
+For diagnostic IDs and details, see the
+[diagnostics reference](./docs/README.md).
+
+## Limitations
+
+`[Throws]` covers synchronous exceptions only; it does not describe
+exceptions observed when awaiting a task or enumerating an iterator. Async
+and iterator bodies and recognized deferred call sites (including `Task`,
 `ValueTask`, and standard enumerable return types) are skipped.
-Non-constant exception filters do not prove handling. See
-[`DESIGN.md`](./DESIGN.md) for the detailed semantics and boundaries.
+Non-constant exception filters do not prove handling.
 
-Build and validate through Cake:
+See [DESIGN.md](./DESIGN.md) for detailed semantics and boundaries.
+
+## Build and validate
+
+Run the repository's full validation target with Cake:
 
 ```powershell
 dotnet cake build.cake --target=Validate
 ```
 
-The validation target also packs both libraries and builds the consumer sample
-for `net10.0` and `net481` against those local packages, checking that the
-packaged analyzer reports its expected EXC002 and EXC003 diagnostics. The
-`net481` build also restores the .NET Framework reference assemblies. GitVersion derives local package
-versions from Git history; those build outputs are not evidence of a public
-release. Published stable and prerelease GitHub Releases are published to
-NuGet.org. Use GitVersion-compatible SemVer tags, such as `v1.0.0` or
-`v0.1.0-alpha1`, to produce stable and prerelease package versions.
+Validation builds, formats, and tests the solution, then packs both libraries
+and builds the consumer sample for `net10.0` and `net481` against those local
+packages. It verifies the expected EXC002 and EXC003 diagnostics from the
+packaged analyzer. The `net481` build also restores the .NET Framework
+reference assemblies.
+
+GitVersion derives local package versions from Git history; local build
+outputs are not evidence of a public release. Stable and prerelease GitHub
+Releases are published to NuGet.org. Use GitVersion-compatible SemVer tags,
+such as `v1.0.0` or `v0.1.0-alpha1`, to produce stable and prerelease package
+versions.
