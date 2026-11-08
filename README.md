@@ -3,8 +3,6 @@
 [![Build](https://github.com/lennoncork/Exceptionable/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/lennoncork/Exceptionable/actions/workflows/build.yml)
 [![Exceptionable on NuGet](https://img.shields.io/nuget/v/Exceptionable)](https://www.nuget.org/packages/Exceptionable)
 [![Exceptionable downloads](https://img.shields.io/nuget/dt/Exceptionable)](https://www.nuget.org/packages/Exceptionable)
-[![Exceptionable.Analyzers on NuGet](https://img.shields.io/nuget/v/Exceptionable.Analyzers)](https://www.nuget.org/packages/Exceptionable.Analyzers)
-[![Exceptionable.Analyzers downloads](https://img.shields.io/nuget/dt/Exceptionable.Analyzers)](https://www.nuget.org/packages/Exceptionable.Analyzers)
 [![MIT license](https://img.shields.io/github/license/lennoncork/Exceptionable)](./LICENSE)
 
 Declare synchronous exception contracts in C# and have them checked during
