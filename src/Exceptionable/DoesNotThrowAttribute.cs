@@ -1,7 +1,7 @@
+using System;
+
 namespace Exceptionable
 {
-    using System;
-
     /// <summary>
     /// Declares that no exception escapes the attributed class, struct, member, property, or event.
     /// Interface-wide contracts are not supported; annotate each interface member.

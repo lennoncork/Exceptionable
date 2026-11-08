@@ -10,6 +10,7 @@
     <Description>Roslyn analyzer for Exceptionable exception contracts.</Description>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <DevelopmentDependency>true</DevelopmentDependency>

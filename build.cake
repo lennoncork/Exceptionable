@@ -35,7 +35,10 @@ Task("Analyzers")
     {
         DotNetFormat("./src/Exceptionable.slnx", new DotNetFormatSettings
         {
-            ArgumentCustomization = args => args.Append("analyzers").Append("--severity").Append("info"),
+            ArgumentCustomization = args => args
+                .Append("analyzers")
+                .Append("--severity")
+                .Append("info"),
             VerifyNoChanges = true,
         });
     });
