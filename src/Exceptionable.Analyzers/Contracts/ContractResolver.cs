@@ -49,19 +49,34 @@ namespace Exceptionable.Analyzers.Contracts
         {
             ImmutableArray<AttributeData> attributes = symbol.GetAttributes();
             bool doesNotThrow = attributes.Any(ThrowsAttributeReader.IsDoesNotThrow);
-            var declaredTypes = attributes
-                .Where(ThrowsAttributeReader.IsThrows)
-                .Select(ThrowsAttributeReader.GetThrowsName)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Select(this.exceptionTypeResolver.ResolveExceptionType)
-                .Where(type => type is not null)
-                .Cast<INamedTypeSymbol>()
-                .ToImmutableArray();
+            ImmutableArray<INamedTypeSymbol>.Builder declaredTypes = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
+            foreach (AttributeData attribute in attributes.Where(ThrowsAttributeReader.IsThrows))
+            {
+                if (ThrowsAttributeReader.TryGetThrowsType(attribute, out ITypeSymbol? typeArgument))
+                {
+                    if (typeArgument is INamedTypeSymbol named &&
+                        this.exceptionTypeResolver.IsExceptionType(named))
+                    {
+                        declaredTypes.Add(named);
+                    }
+
+                    continue;
+                }
+
+                if (ThrowsAttributeReader.TryGetThrowsName(attribute, out string name))
+                {
+                    INamedTypeSymbol? resolved = this.exceptionTypeResolver.ResolveExceptionType(name);
+                    if (resolved is not null)
+                    {
+                        declaredTypes.Add(resolved);
+                    }
+                }
+            }
 
             return doesNotThrow
                 ? new ExceptionContract(true, [])
-                : declaredTypes.Length > 0
-                    ? new ExceptionContract(false, declaredTypes)
+                : declaredTypes.Count > 0
+                    ? new ExceptionContract(false, declaredTypes.ToImmutable())
                     : ExceptionContract.Unspecified;
         }
 

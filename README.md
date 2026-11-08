@@ -2,8 +2,9 @@
 
 Exceptionable consists of two packages:
 
-- `Exceptionable` provides `[Throws("System.IO.IOException")]` and
-  `[DoesNotThrow]` attributes for consumer APIs.
+- `Exceptionable` provides `[Throws<System.IO.IOException>]`,
+  `[Throws("System.IO.IOException")]`, and `[DoesNotThrow]` attributes for
+  consumer APIs.
 - `Exceptionable.Analyzers` checks explicitly declared synchronous exception
   contracts.
 
@@ -62,6 +63,11 @@ contracts. It trusts external implementations and does not validate a method
 inherited from a base class that does not itself implement the interface.
 General class virtual/override dispatch remains unsupported. `base` access is
 checked as the selected member.
+
+`[Throws<TException>]` requires `TException` to derive from `System.Exception`.
+The string form accepts a metadata name, a dotted nested name, or an
+unambiguous short name. The analyzer rejects a name or type argument that does
+not identify a type derived from `System.Exception`.
 
 `[Throws]` and `[DoesNotThrow]` may be applied to properties, indexers, and
 events. An accessor attribute overrides that member contract. The analyzer

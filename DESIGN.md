@@ -111,11 +111,19 @@ This is a strong promise: an implementation must not let an exception escape.
 It does not mean that no exception can occur inside the method; a method may
 throw and handle an exception internally.
 
-### `[Throws("Exception")]`
+### `[Throws("Exception")]` and `[Throws<TException>]`
 
-Apply to a method or class to declare an exception type that may escape. The
-string is a type name, not an exception message. To keep the requested concise
-form usable while avoiding silent guessing, resolve names as follows:
+Apply either form to a method or class to declare an exception type that may
+escape. The string form's argument is a type name, not an exception message.
+`[Throws<TException>]` takes the exception type directly. `TException` must
+derive from `System.Exception`. The package attribute enforces that with a
+type constraint, and the analyzer applies the same inheritance check to every
+recognized generic `[Throws]`, including a source-defined attribute that omits
+the constraint. A type argument that does not derive from `System.Exception`
+is EXC004.
+
+To keep the string form usable while avoiding silent guessing, resolve names
+as follows:
 
 1. A fully qualified metadata name (for example,
    `"System.IO.IOException"`) resolves exactly. Nested types accept either
@@ -127,18 +135,21 @@ form usable while avoiding silent guessing, resolve names as follows:
    `"Exception"` shorthand resolves to `System.Exception`.
 3. An unresolved or ambiguous name is an attribute-usage diagnostic; it must
    not silently disable analysis.
+4. A name that identifies a type which does not derive from `System.Exception`
+   is the same attribute-usage diagnostic. The message says that the type does
+   not derive from `System.Exception`. A short name that also matches an
+   exception type still resolves to that exception type.
 
-The declared type covers derived exception types. Multiple `[Throws(...)]`
-attributes may be applied to declare multiple exception families.
-
-The design deliberately keeps the requested string syntax in the first
-contract version. It is less robust than a `Type`-based attribute argument;
-an implementation should isolate name resolution so a future version can
-consider a strongly typed form without changing analysis semantics.
+The declared type covers derived exception types, including an indirect
+subclass and a closed constructed generic exception type such as
+`MyException<int>`. Multiple `[Throws]` attributes may be applied to declare
+multiple exception families. String and generic attributes on the same target
+contribute to one declared set. An attribute type argument that is an open
+type parameter is rejected by the compiler and is not a contract.
 
 ### Attribute usage and precedence
 
-- Both attributes are valid on methods, constructors, classes, structs,
+- The attributes are valid on methods, constructors, classes, structs,
   properties (including indexers), and events, and are inherited where C#
   attribute inheritance applies.
 - Accessor declarations may carry method-targeted attributes. A property or
@@ -146,10 +157,11 @@ consider a strongly typed form without changing analysis semantics.
   contract. Analyzer call checks include property get/set and event add/remove
   operations. Class-level contracts apply to accessors, including
   compiler-generated accessors such as auto-property getters and setters.
-- The analyzer recognizes the canonical `Exceptionable.DoesNotThrowAttribute`
-  and `Exceptionable.ThrowsAttribute` identities, whether supplied by the
-  package or defined in consumer source. A same-named attribute in another
-  namespace is unrelated.
+- The analyzer recognizes the canonical `Exceptionable.DoesNotThrowAttribute`,
+  `Exceptionable.ThrowsAttribute`, and `Exceptionable.ThrowsAttribute<T>`
+  identities, whether supplied by the package or defined in consumer source.
+  A same-named attribute in another namespace is unrelated. The generic
+  identity is the open attribute type with one type argument.
 - A method-level `[Throws]` list overrides the class-level exception list for
   that method.
 - An accessor contract overrides a contract on its property or event, and a
@@ -319,7 +331,9 @@ in later phases for:
   dispatch remains unsupported because the runtime target may differ from
   the statically selected method.
 - Non-constant exception filters and complex rethrow/data-flow cases.
-- Generic exception types or exception type parameters, if introduced.
+- Open exception type parameters as thrown types or `[Throws<T>]` arguments.
+  A closed constructed type that derives from `System.Exception` is a valid
+  generic attribute argument.
 - External APIs with contracts distributed through reference assemblies.
 
 Until a case is supported, it must not produce misleading certainty. Async
@@ -340,7 +354,7 @@ package.
 | EXC001 | A known exception escapes a `[DoesNotThrow]` method or type. | Warning |
 | EXC002 | A known exception escapes a `[Throws]` method but is not in its declared set. | Warning |
 | EXC003 | A call to an annotated method may throw an exception that is neither caught nor permitted by the caller's contract. | Warning |
-| EXC004 | `[Throws]` names no exception type, or its name is ambiguous. | Error |
+| EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same target. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because its reachable body only calls `[DoesNotThrow]` members. | Warning |
 
@@ -516,8 +530,6 @@ in a consumer project.
 - Design and test async/await and iterator semantics before enabling rules
   for those constructs.
 - Consider override compatibility and metadata-based contracts.
-- Revisit the string-based API and consider a strongly typed alternative
-  while preserving existing annotations.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -582,11 +594,16 @@ The initial implementation confirms these decisions:
   unsealed override call sites remain unsupported. Sealed methods and methods
   on sealed types are checked at the call.
 - A short exception name is an error when more than one exception type uses
-  it. EXC004 says that the name is ambiguous. An unresolved or non-exception
-  name uses the invalid-type wording. Non-exception types are ignored when
-  deciding ambiguity. Attribute strings do not use source-file `using`
-  directives. A leading `global::` is ignored. Nested exception names accept
-  dotted and metadata forms.
+  it. EXC004 says that the name is ambiguous. An unresolved name uses the
+  invalid-type wording. A name or generic type argument that identifies a
+  type which does not derive from `System.Exception` says so. Non-exception
+  types are ignored when deciding ambiguity if an exception type matches.
+  Attribute strings do not use source-file `using` directives. A leading
+  `global::` is ignored. Nested exception names accept dotted and metadata
+  forms.
+- `[Throws<TException>]` declares the same contract as the string form.
+  `TException` must derive from `System.Exception`. String and generic
+  attributes on one target form one declared set.
 - Property and event contracts apply to their accessors unless an accessor
   declares its own contract. User-defined operators and conversions are
   checked at their bodies and call sites. `base` access is statically bound.

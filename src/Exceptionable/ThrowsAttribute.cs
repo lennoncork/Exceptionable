@@ -2,7 +2,10 @@ namespace Exceptionable
 {
     using System;
 
-    /// <summary>Declares an exception type that may escape the attributed type, member, property, or event.</summary>
+    /// <summary>
+    /// Declares an exception type that may escape the attributed type, member, property, or event.
+    /// Prefer <see cref="ThrowsAttribute{TException}"/> when the exception type is available at compile time.
+    /// </summary>
     [AttributeUsage(
         AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Constructor | AttributeTargets.Method |
         AttributeTargets.Property | AttributeTargets.Event,

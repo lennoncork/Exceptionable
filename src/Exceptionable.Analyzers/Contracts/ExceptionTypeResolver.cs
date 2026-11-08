@@ -49,9 +49,9 @@ namespace Exceptionable.Analyzers.Contracts
             INamedTypeSymbol? exact = this.compilation.GetTypeByMetadataName(name);
             if (exact is not null)
             {
-                return this.isException(exact)
+                return this.IsExceptionType(exact)
                     ? new ExceptionTypeResolution(exact, isAmbiguous: false)
-                    : ExceptionTypeResolution.NotFound;
+                    : ExceptionTypeResolution.NotAnException;
             }
 
             if (name.IndexOf('+') >= 0 || name.IndexOf('.') < 0)
@@ -60,14 +60,21 @@ namespace Exceptionable.Analyzers.Contracts
             }
 
             INamedTypeSymbol? match = null;
+            bool sawNonException = false;
             string[] parts = name.Split('.');
             for (int namespaceLength = parts.Length - 1; namespaceLength >= 1; namespaceLength--)
             {
                 string candidate = string.Join(".", parts, 0, namespaceLength) + "+" +
                     string.Join("+", parts, namespaceLength, parts.Length - namespaceLength);
                 INamedTypeSymbol? resolved = this.compilation.GetTypeByMetadataName(candidate);
-                if (resolved is null || !this.isException(resolved))
+                if (resolved is null)
                 {
+                    continue;
+                }
+
+                if (!this.IsExceptionType(resolved))
+                {
+                    sawNonException = true;
                     continue;
                 }
 
@@ -79,26 +86,44 @@ namespace Exceptionable.Analyzers.Contracts
                 match = resolved;
             }
 
-            return match is null
-                ? ExceptionTypeResolution.NotFound
-                : new ExceptionTypeResolution(match, isAmbiguous: false);
+            if (match is not null)
+            {
+                return new ExceptionTypeResolution(match, isAmbiguous: false);
+            }
+
+            return sawNonException
+                ? ExceptionTypeResolution.NotAnException
+                : ExceptionTypeResolution.NotFound;
         }
 
         private ExceptionTypeResolution resolveShortName(string name)
         {
             INamedTypeSymbol? match = null;
-            return this.tryFind(this.compilation.GlobalNamespace, name, ref match)
-                ? match is null
-                    ? ExceptionTypeResolution.NotFound
-                    : new ExceptionTypeResolution(match, isAmbiguous: false)
-                : ExceptionTypeResolution.Ambiguous;
+            bool sawNonException = false;
+            if (!this.tryFind(this.compilation.GlobalNamespace, name, ref match, ref sawNonException))
+            {
+                return ExceptionTypeResolution.Ambiguous;
+            }
+
+            if (match is not null)
+            {
+                return new ExceptionTypeResolution(match, isAmbiguous: false);
+            }
+
+            return sawNonException
+                ? ExceptionTypeResolution.NotAnException
+                : ExceptionTypeResolution.NotFound;
         }
 
-        private bool tryFind(INamespaceSymbol namespaceSymbol, string name, ref INamedTypeSymbol? match)
+        private bool tryFind(
+            INamespaceSymbol namespaceSymbol,
+            string name,
+            ref INamedTypeSymbol? match,
+            ref bool sawNonException)
         {
             foreach (INamedTypeSymbol type in namespaceSymbol.GetTypeMembers())
             {
-                if (!this.tryFind(type, name, ref match))
+                if (!this.tryFind(type, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -106,7 +131,7 @@ namespace Exceptionable.Analyzers.Contracts
 
             foreach (INamespaceSymbol nestedNamespace in namespaceSymbol.GetNamespaceMembers())
             {
-                if (!this.tryFind(nestedNamespace, name, ref match))
+                if (!this.tryFind(nestedNamespace, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -115,21 +140,32 @@ namespace Exceptionable.Analyzers.Contracts
             return true;
         }
 
-        private bool tryFind(INamedTypeSymbol type, string name, ref INamedTypeSymbol? match)
+        private bool tryFind(
+            INamedTypeSymbol type,
+            string name,
+            ref INamedTypeSymbol? match,
+            ref bool sawNonException)
         {
-            if (string.Equals(type.Name, name, StringComparison.Ordinal) && this.isException(type))
+            if (string.Equals(type.Name, name, StringComparison.Ordinal))
             {
-                if (match is not null)
+                if (this.IsExceptionType(type))
                 {
-                    return false;
-                }
+                    if (match is not null)
+                    {
+                        return false;
+                    }
 
-                match = type;
+                    match = type;
+                }
+                else
+                {
+                    sawNonException = true;
+                }
             }
 
             foreach (INamedTypeSymbol nestedType in type.GetTypeMembers())
             {
-                if (!this.tryFind(nestedType, name, ref match))
+                if (!this.tryFind(nestedType, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -138,8 +174,11 @@ namespace Exceptionable.Analyzers.Contracts
             return true;
         }
 
-        private bool isException(INamedTypeSymbol type) =>
-            this.exceptionBaseType is not null && type.InheritsOrEquals(this.exceptionBaseType);
+        internal bool IsExceptionType(ITypeSymbol type) =>
+            type is INamedTypeSymbol named &&
+            named.TypeKind != TypeKind.Error &&
+            this.exceptionBaseType is not null &&
+            named.InheritsOrEquals(this.exceptionBaseType);
     }
 
     internal readonly struct ExceptionTypeResolution
@@ -148,14 +187,19 @@ namespace Exceptionable.Analyzers.Contracts
 
         internal static ExceptionTypeResolution Ambiguous { get; } = new(null, isAmbiguous: true);
 
-        internal ExceptionTypeResolution(INamedTypeSymbol? type, bool isAmbiguous)
+        internal static ExceptionTypeResolution NotAnException { get; } = new(null, isAmbiguous: false, isNotAnException: true);
+
+        internal ExceptionTypeResolution(INamedTypeSymbol? type, bool isAmbiguous, bool isNotAnException = false)
         {
             this.Type = type;
             this.IsAmbiguous = isAmbiguous;
+            this.IsNotAnException = isNotAnException;
         }
 
         internal INamedTypeSymbol? Type { get; }
 
         internal bool IsAmbiguous { get; }
+
+        internal bool IsNotAnException { get; }
     }
 }

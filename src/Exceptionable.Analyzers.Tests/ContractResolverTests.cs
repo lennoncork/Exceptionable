@@ -151,5 +151,36 @@ class C
                     .DeclaredTypes.Single().Name,
                 Is.EqualTo("InvalidOperationException"));
         }
+
+        [Test]
+        public void GetDirectContract_GenericThrowsContributesItsTypeArgument()
+        {
+            const string genericSource = @"
+using System;
+namespace Exceptionable
+{
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    sealed class ThrowsAttribute<T> : Attribute { }
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    sealed class ThrowsAttribute : Attribute
+    {
+        public ThrowsAttribute(string name) { }
+    }
+}
+class C
+{
+    [Exceptionable.Throws<System.IO.IOException>]
+    [Exceptionable.Throws(""System.ArgumentException"")]
+    public void Execute() { }
+}";
+            CSharpCompilation compilation = TestCompilation.Create(genericSource);
+            ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
+            ExceptionContract contract = resolver.GetDirectContract(
+                TestCompilation.GetMethod(compilation, "C", "Execute"));
+
+            Assert.That(
+                contract.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
+                Is.EqualTo(new[] { "System.IO.IOException", "System.ArgumentException" }));
+        }
     }
 }

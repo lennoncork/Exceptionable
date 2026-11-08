@@ -310,7 +310,117 @@ namespace Exceptionable.Analyzers.Tests
         {
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(NonExceptionTypeInThrows_ReportsExc004)));
 
-            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC004"));
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC004");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("does not derive from System.Exception"));
+        }
+
+        [Test]
+        public void GenericThrows_PermitsDeclaredException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_PermitsDeclaredException)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC004"));
+        }
+
+        [Test]
+        public void GenericThrows_ReportsExc002WhenTypeEscapes()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_ReportsExc002WhenTypeEscapes)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("InvalidOperationException"));
+        }
+
+        [Test]
+        public void GenericThrows_ReportsExc003AtCaller()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_ReportsExc003AtCaller)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("IOException"));
+        }
+
+        [Test]
+        public void GenericThrows_AllowsDerivedException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_AllowsDerivedException)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void GenericThrows_CombinesWithStringThrows()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_CombinesWithStringThrows)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC004"));
+        }
+
+        [Test]
+        public void GenericThrows_ConflictsWithDoesNotThrow()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_ConflictsWithDoesNotThrow)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Contain("EXC005"));
+        }
+
+        [Test]
+        public void GenericThrows_ClosedGenericException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_ClosedGenericException)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void GenericThrows_IndirectExceptionBase()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_IndirectExceptionBase)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void GenericThrows_PropertyAccessorReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(GenericThrows_PropertyAccessorReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Value getter"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("IOException"));
+        }
+
+        [Test]
+        public void SourceDefinedGenericThrows_ReportsNonException()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(
+                getTestCase(nameof(SourceDefinedGenericThrows_ReportsNonException)),
+                includeExceptionableAttributes: false);
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC004");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("does not derive from System.Exception"));
+        }
+
+        [Test]
+        public void SourceDefinedGenericThrows_IsRecognized()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(
+                getTestCase(nameof(SourceDefinedGenericThrows_IsRecognized)),
+                includeExceptionableAttributes: false);
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("IOException"));
+        }
+
+        [Test]
+        public void UnrelatedGenericThrows_IsNotAContract()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UnrelatedGenericThrows_IsNotAContract)));
+
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC004"));
         }
 
         [Test]

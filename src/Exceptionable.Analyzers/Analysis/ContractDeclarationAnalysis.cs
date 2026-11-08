@@ -54,13 +54,31 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
+                if (ThrowsAttributeReader.TryGetThrowsType(attribute, out ITypeSymbol? typeArgument))
+                {
+                    if (typeArgument is not null &&
+                        compilationContext.ExceptionTypeResolver.IsExceptionType(typeArgument))
+                    {
+                        continue;
+                    }
+
+                    reportInvalidThrows(
+                        symbolContext,
+                        attributeReference,
+                        typeArgument?.ToDisplayString() ?? string.Empty,
+                        typeArgument is null || typeArgument.TypeKind == TypeKind.Error
+                            ? "is not a valid exception type in this compilation"
+                            : "does not derive from System.Exception");
+                    continue;
+                }
+
                 if (!ThrowsAttributeReader.TryGetThrowsName(attribute, out string? throwsName))
                 {
-                    symbolContext.ReportDiagnostic(Diagnostic.Create(
-                        ExceptionableDiagnostics.ThrowsUsage,
-                        attributeReference.GetSyntax().GetLocation(),
+                    reportInvalidThrows(
+                        symbolContext,
+                        attributeReference,
                         string.Empty,
-                        "is not a valid exception type in this compilation"));
+                        "is not a valid exception type in this compilation");
                     continue;
                 }
 
@@ -70,14 +88,37 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                symbolContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.ThrowsUsage,
-                    attributeReference.GetSyntax().GetLocation(),
+                reportInvalidThrows(
+                    symbolContext,
+                    attributeReference,
                     throwsName,
-                    resolution.IsAmbiguous
-                        ? "is ambiguous"
-                        : "is not a valid exception type in this compilation"));
+                    describeInvalidName(resolution));
             }
+        }
+
+        private static void reportInvalidThrows(
+            SymbolAnalysisContext symbolContext,
+            SyntaxReference attributeReference,
+            string typeName,
+            string reason)
+        {
+            symbolContext.ReportDiagnostic(Diagnostic.Create(
+                ExceptionableDiagnostics.ThrowsUsage,
+                attributeReference.GetSyntax().GetLocation(),
+                typeName,
+                reason));
+        }
+
+        private static string describeInvalidName(ExceptionTypeResolution resolution)
+        {
+            if (resolution.IsAmbiguous)
+            {
+                return "is ambiguous";
+            }
+
+            return resolution.IsNotAnException
+                ? "does not derive from System.Exception"
+                : "is not a valid exception type in this compilation";
         }
     }
 }

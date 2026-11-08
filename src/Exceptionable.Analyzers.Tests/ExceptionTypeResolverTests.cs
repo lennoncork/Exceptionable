@@ -64,6 +64,10 @@ public class Outer
             Assert.That(resolver.ResolveExceptionType("SharedException"), Is.Null);
             Assert.That(resolver.Resolve("SharedException").IsAmbiguous, Is.True);
             Assert.That(resolver.ResolveExceptionType("Other.NotAnException"), Is.Null);
+            Assert.That(resolver.Resolve("Other.NotAnException").IsNotAnException, Is.True);
+            Assert.That(resolver.Resolve("System.String").IsNotAnException, Is.True);
+            Assert.That(resolver.Resolve("String").IsNotAnException, Is.True);
+            Assert.That(resolver.Resolve("MissingException").IsNotAnException, Is.False);
             Assert.That(resolver.Resolve("MissingException").IsAmbiguous, Is.False);
             Assert.That(resolver.ResolveExceptionType("MissingException"), Is.Null);
             Assert.That(resolver.ResolveExceptionType("NestedException"), Is.Null);
