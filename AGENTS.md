@@ -61,7 +61,8 @@ a task is split out of that file.
 │   │   ├── Configuration/
 │   │   ├── Contracts/
 │   │   ├── Analysis/
-│   │   └── Diagnostics/
+│   │   ├── Diagnostics/
+│   │   └── Generation/
 │   └── Exceptionable.Analyzers.Tests/
 │       └── # Analyzer tests
 ├── build.cake
@@ -80,8 +81,9 @@ a task is split out of that file.
 - Keep contract discovery, attribute/name resolution, and precedence in the
   analyzer's `Contracts/` area; keep exception-flow and catch/propagation
   analysis in `Analysis/`; centralize rule descriptors and diagnostic
-  reporting in `Diagnostics/`. Resolve compilation-specific symbols per
-  compilation and never retain them across compilations.
+  reporting in `Diagnostics/`. Keep the inferred-throws generator and its
+  assembly-metadata marker in `Generation/`. Resolve compilation-specific
+  symbols per compilation and never retain them across compilations.
 - Keep the attributes tests independent from analyzer tests. Analyzer tests
   should compile representative snippets and verify positive and negative
   behavior, diagnostic IDs, arguments, and source locations. Use package tests

@@ -18,8 +18,11 @@ namespace Exceptionable.Analyzers.Analysis
             this.Compilation = compilation;
             this.Options = new AnalysisOptions(optionsProvider);
             this.ExceptionTypeResolver = new ExceptionTypeResolver(compilation);
-            this.ContractResolver = new ContractResolver(this.ExceptionTypeResolver);
             this.Reachability = new ReachabilityAnalysis();
+            this.InferredThrows = new InferredThrowAnalysis(compilation, this.Reachability);
+            this.ContractResolver = new ContractResolver(
+                this.ExceptionTypeResolver,
+                this.InferredThrows.GetImplicitDeclaredTypes);
         }
 
         internal bool IsSupportedMethod(IMethodSymbol method) =>
@@ -34,5 +37,7 @@ namespace Exceptionable.Analyzers.Analysis
         internal ContractResolver ContractResolver { get; }
 
         internal ReachabilityAnalysis Reachability { get; }
+
+        internal InferredThrowAnalysis InferredThrows { get; }
     }
 }

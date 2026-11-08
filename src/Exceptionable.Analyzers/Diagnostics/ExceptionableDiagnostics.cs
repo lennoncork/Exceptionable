@@ -59,6 +59,24 @@ namespace Exceptionable.Analyzers.Diagnostics
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC006.md");
 
+        internal static readonly DiagnosticDescriptor UnusedDeclaredException = new(
+            "EXC008",
+            "Declared exception does not escape",
+            "Exception type '{0}' is declared by [Throws] on '{1}' but does not escape",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC008.md");
+
+        internal static readonly DiagnosticDescriptor RedundantArgumentNullException = new(
+            "EXC007",
+            "Unnecessary ArgumentNullException",
+            "ArgumentNullException should be removed from '{0}' because the constructor is nullable-aware and callers are not expected to pass null",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC007.md");
+
         internal static ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             ImmutableArray.Create(
                 DoesNotThrowEscapes,
@@ -66,6 +84,8 @@ namespace Exceptionable.Analyzers.Diagnostics
                 CallerViolation,
                 ThrowsUsage,
                 ConflictingContracts,
-                UnnecessaryTryCatch);
+                UnnecessaryTryCatch,
+                UnusedDeclaredException,
+                RedundantArgumentNullException);
     }
 }

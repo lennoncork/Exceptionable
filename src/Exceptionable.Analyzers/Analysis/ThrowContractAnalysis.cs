@@ -46,6 +46,18 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
+            bool redundantArgumentNull = compilationContext.InferredThrows
+                .IsRedundantNullableGuard(throwOperation, hosts);
+            if (redundantArgumentNull)
+            {
+                IMethodSymbol constructor = hosts.First(host =>
+                    host.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor);
+                operationContext.ReportDiagnostic(Diagnostic.Create(
+                    ExceptionableDiagnostics.RedundantArgumentNullException,
+                    throwOperation.Syntax.GetLocation(),
+                    constructor.GetContractDisplayName()));
+            }
+
             ContractResolver contractResolver = compilationContext.ContractResolver;
             IMethodSymbol[] applicable = [.. hosts.Where(contractResolver.HasApplicableContract)];
             if (applicable.Length == 0)
@@ -60,7 +72,8 @@ namespace Exceptionable.Analyzers.Analysis
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.GetExceptionDisplayName()));
             }
-            else if (applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
+            else if (!redundantArgumentNull &&
+                applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
             {
                 operationContext.ReportDiagnostic(Diagnostic.Create(
                     ExceptionableDiagnostics.ThrowsMismatch,

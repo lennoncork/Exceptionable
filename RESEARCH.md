@@ -110,7 +110,12 @@ The compiler parses `#nullable` as its own syntax
 (`NullableDirectiveTrivia`) and stores the resulting context per source
 position. Analyzers can read the result with
 [`SemanticModel.GetNullableContext`](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.semanticmodel.getnullablecontext?view=roslyn-dotnet-4.7.0).
-There is no API to define another context of that kind.
+EXC007 reads the annotation flag at the constructor declaration. A
+non-nullable reference parameter is `NullableAnnotation.NotAnnotated`.
+`[AllowNull]`, documented with the other nullable analysis attributes linked
+above, still allows a caller to pass null, so that parameter keeps the
+inferred `ArgumentNullException` contract described in DESIGN.md. There is no
+API to define another context of that kind.
 
 Roslyn's directive parser, at
 [`DirectiveParser.cs`](https://github.com/dotnet/roslyn/blob/6d158e8441092b11dcd98fe2b540f51e5ae24608/src/Compilers/CSharp/Portable/Parser/DirectiveParser.cs),
@@ -364,6 +369,26 @@ registration, `CompilationStartAction`, `AttributeData`,
 configuration. Use the Roslyn analyzer testing packages' documentation and
 examples to verify expected diagnostics and locations. This list points to
 search targets; it does not prescribe a particular Roslyn API version.
+
+## Inferred contracts in compiled assemblies
+
+A source generator adds source that is compiled with the rest of the project.
+The [Roslyn SDK overview](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/#source-generators)
+describes that as compile-time metaprogramming: code created at compile time
+and added to the compilation. The Roslyn source-generator cookbook, at
+[`source-generators.cookbook.md`](https://github.com/dotnet/roslyn/blob/04b3076a13a7fb376613cb17003059000db1beaa/docs/features/source-generators.cookbook.md),
+puts code rewriting outside that design. Exceptionable therefore records an
+inferred `[Throws]` contract as assembly metadata instead of editing the
+member that throws.
+
+The generator stores `ISymbol.GetDocumentationCommentId()`
+([API reference](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.isymbol.getdocumentationcommentid)).
+That value uses the compiler's XML documentation id, including `M:` for a
+method and `#ctor` for a constructor
+([ID strings](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/xmldoc/#id-strings)).
+A referencing compilation matches the same id on the metadata method. A
+closed generic exception display name is not always a metadata type name, so
+resolution of that recorded type can fail. DESIGN.md records that limit.
 
 ## How this research applies
 

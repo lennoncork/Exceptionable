@@ -82,8 +82,11 @@ takes precedence.
 ## 4. Non-goals for the initial release
 
 - Runtime checks, exception wrapping, or generated try/catch blocks.
-- Inferring a complete exception contract for arbitrary code, including
-  framework and third-party APIs.
+- Inferring exceptions from code that has no explicit throw in a supported
+  member. Framework and third-party methods stay unspecified unless their
+  assembly recorded an inferred contract or they carry `[Throws]`.
+  `ThrowIfNull` and other helper calls stay ordinary calls. Section 6
+  describes the escaping-throw inference that is in scope.
 - Proving behavior across reflection, native calls, dynamic dispatch, or
   arbitrary control flow.
 - Modeling asynchronous, iterator, or interprocedural behavior beyond the
@@ -210,6 +213,67 @@ Treat a method's contract as one of:
 - **Unspecified:** legacy/default behavior; no new contract diagnostic is
   produced for that method.
 
+A reachable, uncaught explicit `throw` on a supported synchronous member
+becomes that member's inferred `[Throws]` contract. Supported members are
+methods, constructors, accessors, operators, and conversions. The defining
+compilation discovers the contract from source. The analyzer package's source
+generator writes that contract into the compiled assembly, so a consuming
+project can apply it from the reference alone. The record is assembly
+metadata, `Exceptionable.Generation.InferredThrowsAttribute`, keyed by the
+member's documentation comment id. A source generator can add that file; it
+cannot rewrite the existing member to carry `[Throws]`. The consumer's
+analyzer reads the assembly attribute and treats it as the member's
+`[Throws]` contract. The public attributes remain `[Throws]` and
+`[DoesNotThrow]`. The generated attribute is an analyzer implementation
+detail and is not part of the Exceptionable package.
+
+An explicit `[Throws]` or `[DoesNotThrow]` contract replaces inference. The
+explicit contract may be on the member, its property or event, its type, or
+an override it inherits. Inferred types are not added to that set. Authors
+use the explicit contract to control what callers must handle. A throw
+outside an explicit `[Throws]` set is EXC002, and callers see only that set.
+`[DoesNotThrow]` is not replaced; the throw remains EXC001.
+
+When that member also produces a known escaping exception, a declared type
+that no reachable throw or known call produces is EXC008. A derived throw or
+call satisfies a declared base type. A `[Throws]` attribute on a member with
+no known escaping exception remains the published contract and is not
+EXC008. Caught and unreachable throws do not keep a declaration.
+
+A call does not copy the callee's contract onto the caller. The caller must
+catch the exception or declare it, or the call is EXC003. A member that only
+calls a throwing member is not given the callee's contract. A constructor
+that only chains with `: this()` or `: base()` is checked at that chain.
+
+Caught throws, unreachable throws, and throws inside a local function,
+lambda, or anonymous function do not count. Async methods, iterators, and
+generated members are not inferred. `ArgumentNullException.ThrowIfNull` is
+an ordinary call and is not an implicit source. Field and property
+initializers that a constructor runs, including a primary-constructor
+initializer, count as throws of that constructor. Struct constructors follow
+the same rules.
+
+An interface contract does not replace inference on a source implementation.
+A call through the interface uses the interface contract. The implementation
+is still checked against every interface contract it implements. Its escaping
+throws are still inferred for a call on the concrete member, unless that
+implementation has an explicit contract of its own.
+
+When nullable annotations are enabled on the constructor and the escaping
+throw guards a non-nullable reference parameter, the throw is redundant.
+Callers are not expected to pass null for that parameter. The same conclusion
+applies when the throw names no parameter and every reference-type parameter
+is a non-nullable reference. EXC007 warns that the `ArgumentNullException`
+throw should be removed. That throw does not add an inferred `[Throws]`
+contract and is not also EXC002. An explicit `[Throws]` or `[DoesNotThrow]`
+still overrides inference, and EXC007 still reports. The throw is EXC001 when
+the constructor's contract is `[DoesNotThrow]`. A nullable parameter such as
+`string?`, or a parameter with `[AllowNull]`, keeps the inferred contract,
+because the caller is allowed to pass null. The nullable context is the
+annotation flag from `SemanticModel.GetNullableContext` at the constructor
+declaration. Nullable annotations are not a runtime null check; a project
+that wants the defensive guard can suppress EXC007.
+
 For a call with a known contract, an exception is handled if a reachable
 `catch` clause catches its type or a base type. A declared exception can also
 be propagated if the enclosing method's effective contract permits that
@@ -251,9 +315,10 @@ inside them, so a `[DoesNotThrow]` caller of an `async` method is not evidence
 that the call cannot throw before the first await.
 
 The analyzer must not claim soundness for exceptions without a known contract.
-In particular, an unannotated call is not assumed to be non-throwing or
-`System.Exception`-throwing. This avoids flooding existing code with
-unactionable diagnostics and makes annotations the opt-in boundary.
+A call to a member with no explicit or inferred contract is not assumed to be
+non-throwing or `System.Exception`-throwing. Framework and third-party
+methods stay in that category unless they declare `[Throws]` or were compiled
+with this generator. Diagnostics stay on contracts the analyzer can see.
 
 ## 7. Initial analysis scope
 
@@ -262,6 +327,9 @@ information from Roslyn. The initial implementation should recognize:
 
 - Explicit `throw` and `throw;` statements, including a null operand as
   `System.NullReferenceException`.
+- An escaping explicit `throw` on a supported member. It is that member's
+  effective `[Throws]` contract unless an explicit attribute replaces it, or
+  EXC007 reports a constructor `ArgumentNullException` as redundant.
 - Calls, object creation, property getter/setter accesses, event add/remove
   accessors, user-defined operators, and user-defined conversions whose
   target has an effective `[Throws]` contract.
@@ -372,10 +440,15 @@ categories, default severities, and help links. The catalog is
 | EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, or event. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
+| EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled. Remove the throw; callers are not expected to pass null. | Warning |
+| EXC008 | A `[Throws]` type does not escape, and the member produces some other known escaping exception. Remove the stale declaration or restore a throw or call that produces it. | Warning |
 
-EXC001 and EXC002 report explicit throws. An annotated call is EXC003 even
-when the caller is `[DoesNotThrow]`. Messages name exception types with
-their namespace-qualified display names, so two exceptions that share a
+EXC001 and EXC002 report explicit throws. EXC008 reports a `[Throws]`
+attribute whose type no longer escapes. A call whose contract is explicit
+or inferred is EXC003 even when the caller is `[DoesNotThrow]`. A throw
+covered by the inferred set is not EXC002. A nullable-redundant constructor
+`ArgumentNullException` is EXC007 and is not also EXC002. Messages name
+exception types with their namespace-qualified display names, so two exceptions that share a
 short name stay distinct. Diagnostics identify the relevant throw or call
 site. Avoid diagnostics for exception sources with no known contract.
 
@@ -425,9 +498,12 @@ dotnet_diagnostic.EXC003.severity = none
 Disabling Exceptionable analysis suppresses all Exceptionable diagnostics for
 the affected compilation or file, regardless of per-rule severity settings.
 Per-rule settings do not turn analysis on when the master switch is disabled.
-Disabling a file does not remove `[Throws]` or `[DoesNotThrow]` metadata.
-Callers in an enabled file are still checked against a contract declared in a
-disabled file.
+Disabling a file does not remove `[Throws]` or `[DoesNotThrow]` metadata, and
+it does not stop the generator from recording an inferred contract in the
+compiled assembly. Callers in an enabled file are still checked against a
+contract declared in a disabled file. A consuming project that enables
+analysis sees both explicit attributes and inferred contracts stored in a
+referenced assembly.
 
 There is no `#exceptionable` preprocessor directive. `#nullable` changes the
 nullable context from one line to the next because the C# compiler parses that
@@ -476,8 +552,14 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 interface precedence. Resolved names and effective contracts are cached for
 the compilation.
 `Analysis/` contains separate declaration, throw, call, and unnecessary-catch
-handlers, plus exception-flow, operation-target, method-policy, and
-reachability components.
+handlers, plus exception-flow, operation-target, method-policy,
+reachability, and inferred-throw components. `InferredThrowAnalysis` scans
+source for the defining compilation and reads generated metadata for a method
+that has no declaring syntax.
+`Generation/` contains the incremental generator that writes that metadata
+and the marker used to recognize it. The generator lives in the analyzer
+assembly so the NuGet `analyzers/dotnet/cs` asset loads it with the analyzer.
+It does not add a public attribute to the Exceptionable package.
 `Diagnostics/` owns the descriptors. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
@@ -504,18 +586,29 @@ phase 4 documentation:
 - Explicit throws (EXC001 and EXC002), annotated calls (EXC003), and
   unnecessary `try`/`catch` (EXC006), including constructors, accessors,
   initializers, pattern methods, and interface contracts.
+- A reachable uncaught throw on a supported synchronous member is an inferred
+  `[Throws]` contract. An explicit `[Throws]` or `[DoesNotThrow]` contract
+  replaces that inference. The generator persists the inferred contract in
+  the compiled assembly for referencing compilations. A nullable-redundant
+  constructor `ArgumentNullException` is EXC007 and is not inferred.
+- EXC008 warns when a `[Throws]` type is stale relative to the known escaping
+  exceptions. A `[Throws]` member with no known escaping exception is left
+  unchanged.
 - Supported hosts are recorded in section 13.
 
 Still open:
 
-- Code fixes. Add one only where a safe fix is clear (for example, adding a
-  compatible `[Throws]` annotation). Never generate a catch that silently
-  suppresses an exception.
+- Code fixes that insert `[Throws]` into user source. Add one only where a
+  safe fix is clear. Never generate a catch that silently suppresses an
+  exception.
+- Reading throws from assemblies that were not compiled with this generator.
+  Framework and third-party methods stay unspecified unless they declare
+  `[Throws]`.
 - Measuring analyzer performance on representative projects. Short exception
   names are already indexed once per compilation.
 - Async/await and iterator contracts, before enabling rules for those
-  constructs. Override compatibility beyond the sealed and `base` cases, and
-  metadata-based contracts, also remain future work.
+  constructs. Override compatibility beyond the sealed and `base` cases also
+  remains future work.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -546,7 +639,22 @@ Minimum acceptance criteria for the initial usable release:
   the project-level switch.
 - Per-rule severity settings can suppress or configure diagnostics when
   analysis is enabled, but do not enable analysis by themselves.
-- Unannotated call sites remain unaffected.
+- A call to a member with no explicit contract and no escaping throw stays
+  unspecified.
+- A supported member that lets an exception escape is treated as `[Throws]`
+  for each escaping type, unless an explicit contract replaces inference or
+  EXC007 applies.
+- An explicit `[Throws]` or `[DoesNotThrow]` is the whole contract callers
+  see. Inferred types are not added to it.
+- A `[Throws]` type that no reachable throw or known call produces is EXC008
+  when the member produces some other known escaping exception. A member
+  whose `[Throws]` contract has no known escaping exception is not EXC008.
+- A referencing compilation reports EXC003 for an inferred contract recorded
+  in a referenced assembly, without that member's source.
+- A nullable-aware constructor that throws `ArgumentNullException` for a
+  non-nullable reference parameter reports EXC007 and does not publish that
+  exception. A nullable or `[AllowNull]` parameter keeps the inferred
+  contract.
 - The analyzer builds, loads in a consumer project, and runs without
   diagnostics caused by the analyzer itself.
 - Tests explicitly capture unsupported cases so future phases can expand
@@ -568,8 +676,20 @@ The initial implementation confirms these decisions:
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006 are enabled
-  warnings and EXC004-EXC005 are enabled errors.
+- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006-EXC008 are
+  enabled warnings and EXC004-EXC005 are enabled errors.
+- A reachable uncaught throw on a supported synchronous member adds an
+  inferred `[Throws]` contract for that exception. The generator records it
+  with the member's documentation comment id. An explicit `[Throws]` or
+  `[DoesNotThrow]`, including a type or override contract, replaces
+  inference. A call does not copy a contract onto its caller. EXC007 uses
+  the constructor declaration's nullable annotation context and drops only
+  that redundant constructor `ArgumentNullException`. `[AllowNull]` and a
+  nullable reference parameter keep the inferred contract. `ThrowIfNull` is
+  not an implicit source. EXC008 compares a direct `[Throws]` set with the
+  known escaping throws and calls of the members that set governs. A closed
+  generic exception type may be recorded but not resolved from metadata when
+  its display name is not a metadata type name.
 - EXC006 reports a `try`/`catch` whose reachable `try` body cannot throw a
   tracked exception because every call there has a `[DoesNotThrow]` contract
   and every other reachable operation is non-throwing. It is not reported for
