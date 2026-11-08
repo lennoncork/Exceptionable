@@ -365,28 +365,28 @@ configuration. Use the Roslyn analyzer testing packages' documentation and
 examples to verify expected diagnostics and locations. This list points to
 search targets; it does not prescribe a particular Roslyn API version.
 
-## How to apply this research to the exception analyzer
+## How this research applies
 
-- Start with a small project structure similar to the Cookbook if the analyzer
-  is initially solution-local. Introduce separate attribute, analyzer,
-  code-fix, or packaging projects only when their distribution or dependency
-  boundaries justify them.
-- Follow established descriptor and analyzer lifecycle patterns, but keep the
-  normalized exception contract and precedence rules in
-  [DESIGN.md](./DESIGN.md) as this project's source of truth.
-- Resolve annotation identity and exception types semantically. The Cookbook's
-  simple attribute example is a starting point, not a complete strategy for
-  inherited attributes, metadata, or ambiguous string type names.
-- Build exception-flow behavior incrementally and prove each supported case
-  with analyzer tests. Do not copy broad analyzer abstractions from large
-  repositories before a concrete need appears.
-- Recheck all external sources when selecting package versions or publishing:
-  the repository links here are pinned snapshots, while current tooling,
-  frameworks, and host support may have changed.
+Exceptionable already uses the split this guide recommends: the public
+attributes are a normal library, and the analyzer is a separate Roslyn
+package. [DESIGN.md](./DESIGN.md) is the behavior contract. Use the links
+above when changing packaging, configuration, or analyzer lifecycle code.
+
+- Keep descriptor and analyzer lifecycle patterns, and keep contract
+  precedence in `ContractResolver`.
+- Resolve annotation identity and exception types semantically. Inherited
+  attributes, metadata names, and ambiguous string type names need the rules
+  in DESIGN.md, not a short-name text match.
+- Prove each supported exception-flow case with analyzer tests. Do not copy
+  broad analyzer abstractions from large repositories before a concrete need
+  appears.
+- Recheck external sources when selecting package versions or publishing.
+  The repository links here are pinned snapshots.
 - GitVersion 6 renames the older deployment modes. `ContinuousDelivery` is the
   mode that promotes commit distance into the prerelease number.
   `ManualDeployment` leaves that distance in `+` build metadata, which NuGet
   does not keep as part of the package identity. See
   [Version incrementing](https://gitversion.net/docs/reference/version-increments)
   and the [deployment mode](https://gitversion.net/api/GitVersion.VersionCalculation/DeploymentMode/)
-  names.
+  names. The rule catalog in `AnalyzerReleases.Shipped.md` tracks diagnostic
+  IDs. It is not the NuGet package version.

@@ -67,35 +67,47 @@ Task("Consumer")
     .IsDependentOn("Package")
     .Does(() =>
     {
-        var buildLog = MakeAbsolute(File("./.output/consumer-build.log")).FullPath;
         var consumerPackages = MakeAbsolute(Directory("./.output/consumer-packages")).FullPath;
         var localPackages = MakeAbsolute(Directory("./.packages")).FullPath;
-        DotNetBuild("./samples/Exceptionable.Consumer/Exceptionable.Consumer.csproj", new DotNetBuildSettings
+        // A feed URL in /p:RestoreSources is parsed as an MSBuild comment on Windows
+        // because response files treat // as a comment. Keep the URL in a config file.
+        var restoreConfig = MakeAbsolute(File("./.output/consumer.nuget.config")).FullPath;
+        EnsureDirectoryExists("./.output/");
+        System.IO.File.WriteAllText(
+            restoreConfig,
+            $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="local" value="{xmlAttribute(localPackages)}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+            </configuration>
+            """);
+        foreach (var framework in new[] { "net10.0", "net481" })
         {
-            Configuration = configuration,
-            ArgumentCustomization = args => args
-                .Append($"/p:RestoreSources=\"{localPackages}\"")
-                .Append($"/p:RestorePackagesPath=\"{consumerPackages}\"")
-                .Append("--verbosity")
-                .Append("normal")
-                .AppendQuoted($"/flp:logfile={buildLog};verbosity=normal"),
-        });
+            var buildLog = MakeAbsolute(File($"./.output/consumer-build-{framework}.log")).FullPath;
+            DotNetBuild("./samples/Exceptionable.Consumer/Exceptionable.Consumer.csproj", new DotNetBuildSettings
+            {
+                Configuration = configuration,
+                Framework = framework,
+                ArgumentCustomization = args => args
+                    .Append($"/p:RestoreConfigFile=\"{restoreConfig}\"")
+                    .Append($"/p:RestorePackagesPath=\"{consumerPackages}\"")
+                    .Append("--verbosity")
+                    .Append("normal")
+                    .AppendQuoted($"/flp:logfile={buildLog};verbosity=normal"),
+            });
 
-        var log = System.IO.File.ReadAllText(buildLog);
-        var exc002Count = Regex.Matches(log, @"Contracts\.cs\(\d+,\d+\): warning EXC002:")
-            .Cast<Match>()
-            .Select(match => match.Value)
-            .Distinct()
-            .Count();
-        var exc003Count = Regex.Matches(log, @"Contracts\.cs\(\d+,\d+\): warning EXC003:")
-            .Cast<Match>()
-            .Select(match => match.Value)
-            .Distinct()
-            .Count();
-        if (exc002Count != 1 || exc003Count != 1)
-        {
-            throw new CakeException(
-                $"Packaged consumer expected one EXC002 and one EXC003 diagnostic, but found {exc002Count} and {exc003Count}.");
+            var log = System.IO.File.ReadAllText(buildLog);
+            var exc002Count = CountDiagnostics(log, "EXC002");
+            var exc003Count = CountDiagnostics(log, "EXC003");
+            if (exc002Count != 1 || exc003Count != 1)
+            {
+                throw new CakeException(
+                    $"Packaged {framework} consumer expected one EXC002 and one EXC003 diagnostic, but found {exc002Count} and {exc003Count}.");
+            }
         }
     });
 
@@ -140,3 +152,15 @@ Task("Default")
     .IsDependentOn("Validate");
 
 RunTarget(target);
+
+static string xmlAttribute(string value) =>
+    System.Security.SecurityElement.Escape(value) ?? value;
+
+static int CountDiagnostics(string log, string id)
+{
+    return Regex.Matches(log, $@"\(\d+,\d+\): warning {id}:")
+        .Cast<Match>()
+        .Select(match => match.Value)
+        .Distinct()
+        .Count();
+}

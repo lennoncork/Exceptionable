@@ -30,6 +30,28 @@ namespace Nested
 public class Outer
 {
     public class NestedException : System.Exception { }
+}
+namespace N.Outer
+{
+    public class NestedException { }
+}
+namespace N
+{
+    public class Outer
+    {
+        public class NestedException : System.Exception { }
+    }
+}
+namespace Ambiguous.Outer
+{
+    public class NestedException : System.Exception { }
+}
+namespace Ambiguous
+{
+    public class Outer
+    {
+        public class NestedException : System.Exception { }
+    }
 }";
 
         [Test]
@@ -74,6 +96,14 @@ public class Outer
             Assert.That(
                 resolver.ResolveExceptionType("global::System.IO.IOException")?.ToDisplayString(),
                 Is.EqualTo("System.IO.IOException"));
+            Assert.That(
+                resolver.ResolveExceptionType("N.Outer.NestedException")?.ToDisplayString(),
+                Is.EqualTo("N.Outer.NestedException"));
+            Assert.That(
+                resolver.ResolveExceptionType("N.Outer+NestedException")?.ToDisplayString(),
+                Is.EqualTo("N.Outer.NestedException"));
+            Assert.That(resolver.Resolve("Ambiguous.Outer.NestedException").IsAmbiguous, Is.True);
+            Assert.That(resolver.ResolveExceptionType("Ambiguous.Outer.NestedException"), Is.Null);
         }
     }
 }

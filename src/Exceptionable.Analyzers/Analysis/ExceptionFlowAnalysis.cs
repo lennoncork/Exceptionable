@@ -63,9 +63,12 @@ namespace Exceptionable.Analyzers.Analysis
                 return null;
             }
 
-            return catchClauseSyntax.Declaration is null
-                ? compilation.GetTypeByMetadataName("System.Exception")
-                : null;
+            if (catchClauseSyntax.Declaration is null)
+            {
+                return compilation.GetTypeByMetadataName("System.Exception");
+            }
+
+            return throwOperation.SemanticModel?.GetTypeInfo(catchClauseSyntax.Declaration.Type).Type;
         }
 
         internal static ITypeSymbol? GetThrownExceptionType(IOperation exception, Compilation compilation)

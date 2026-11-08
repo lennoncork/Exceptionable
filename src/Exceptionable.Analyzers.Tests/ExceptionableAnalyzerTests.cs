@@ -101,7 +101,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowsMethod_ReportsExc002_WhenTypeEscapes)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.InvalidOperationException'"));
         }
 
         [Test]
@@ -134,7 +134,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(RethrowInThrowsMethod_ReportsCatchType)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.InvalidOperationException'"));
         }
 
         [Test]
@@ -143,7 +143,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(BareRethrowInCatchAll_ReportsExceptionType)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'Exception'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.Exception'"));
         }
 
         [Test]
@@ -461,7 +461,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(InterfaceCall_UsesDeclaredContract)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("'IOException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'System.IO.IOException'"));
         }
 
         [Test]
@@ -564,7 +564,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(InterfaceImplementation_ReportsUndeclaredException)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.InvalidOperationException'"));
         }
 
         [Test]
@@ -597,7 +597,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(MultipleInterfaceContracts_AreAllValidated)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'ArgumentException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.ArgumentException'"));
         }
 
         [Test]
@@ -683,7 +683,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowNull_ReportsNullReferenceException)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC001");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'NullReferenceException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.NullReferenceException'"));
         }
 
         [Test]
@@ -692,7 +692,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowDefaultException_ReportsNullReferenceException)));
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC001");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'NullReferenceException'"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.NullReferenceException'"));
         }
 
         [Test]
@@ -780,6 +780,37 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(RecordCopyConstructor_DoesNotAttributeInitializer)));
 
             Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void UserDefinedRecordCopyConstructor_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UserDefinedRecordCopyConstructor_ReportsExc003)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void RedeclaredInterfaceContract_ReportsExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(RedeclaredInterfaceContract_ReportsExc003)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'System.IO.IOException'"));
+        }
+
+        [Test]
+        public void SameShortNameExceptions_ReportSeparateExc003()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(SameShortNameExceptions_ReportSeparateExc003)));
+
+            string[] messages = diagnostics
+                .Where(diagnostic => diagnostic.Id == "EXC003")
+                .Select(diagnostic => diagnostic.GetMessage())
+                .ToArray();
+            Assert.That(messages, Has.Length.EqualTo(2));
+            Assert.That(messages, Has.Some.Contains("A.SharedException"));
+            Assert.That(messages, Has.Some.Contains("B.SharedException"));
         }
 
         [Test]
@@ -959,7 +990,7 @@ namespace Exceptionable.Analyzers.Tests
                 references.Add(MetadataReference.CreateFromFile(typeof(DoesNotThrowAttribute).Assembly.Location));
             }
 
-            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source);
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, TestCompilation.ParseOptions);
             CSharpCompilation compilation = CSharpCompilation.Create(
                 assemblyName: "ExceptionableTests",
                 syntaxTrees: [syntaxTree],

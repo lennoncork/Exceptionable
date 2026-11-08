@@ -17,9 +17,74 @@ namespace Exceptionable.Analyzers.Contracts
             return false;
         }
 
-        internal static bool IsSameMethod(this IMethodSymbol first, IMethodSymbol second) =>
-            SymbolEqualityComparer.Default.Equals(first, second) ||
-            SymbolEqualityComparer.Default.Equals(first.OriginalDefinition, second.OriginalDefinition);
+        internal static string GetExceptionDisplayName(this ITypeSymbol type) =>
+            type.ToDisplayString();
+
+        internal static bool IsSameMethod(this IMethodSymbol first, IMethodSymbol second)
+        {
+            if (SymbolEqualityComparer.Default.Equals(first, second))
+            {
+                return true;
+            }
+
+            if (!SymbolEqualityComparer.Default.Equals(first.OriginalDefinition, second.OriginalDefinition))
+            {
+                return false;
+            }
+
+            return containingTypesMatch(first.ContainingType, second.ContainingType);
+        }
+
+        private static bool containingTypesMatch(INamedTypeSymbol? first, INamedTypeSymbol? second)
+        {
+            if (first is null || second is null)
+            {
+                return first is null && second is null;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(first, second))
+            {
+                return true;
+            }
+
+            if (!SymbolEqualityComparer.Default.Equals(first.OriginalDefinition, second.OriginalDefinition))
+            {
+                return false;
+            }
+
+            if (!typeArgumentsMatch(first, second))
+            {
+                return false;
+            }
+
+            return containingTypesMatch(first.ContainingType, second.ContainingType);
+        }
+
+        private static bool typeArgumentsMatch(INamedTypeSymbol first, INamedTypeSymbol second)
+        {
+            if (first.TypeArguments.Length != second.TypeArguments.Length)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < first.TypeArguments.Length; index++)
+            {
+                ITypeSymbol firstArgument = first.TypeArguments[index];
+                ITypeSymbol secondArgument = second.TypeArguments[index];
+                if (firstArgument.TypeKind == TypeKind.TypeParameter ||
+                    secondArgument.TypeKind == TypeKind.TypeParameter)
+                {
+                    continue;
+                }
+
+                if (!SymbolEqualityComparer.Default.Equals(firstArgument, secondArgument))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         internal static string GetContractDisplayName(this IMethodSymbol method)
         {

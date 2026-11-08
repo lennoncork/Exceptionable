@@ -24,6 +24,8 @@ package identity.
 ```
 
 Replace `0.1.0` with the version from the GitHub Release.
+`AnalyzerReleases.Shipped.md` tracks diagnostic IDs and is not that package
+version.
 
 Reference `Exceptionable` wherever contracts are declared, and add
 `Exceptionable.Analyzers` to projects where analysis should run. Keeping the
@@ -55,14 +57,22 @@ Per-file control is `exceptionable_analysis`.
 Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings and
 does not enable analysis by itself.
 
-The analyzer package targets .NET Standard 2.0 for compatibility with Roslyn
-hosts. The attributes library supports .NET 10 and .NET Framework 4.8.1
-consumers. The analyzer checks interface contracts at interface-typed call
+The analyzer package targets .NET Standard 2.0 and is built against Roslyn
+4.14. It loads in Visual Studio 2022 17.14 or later and in .NET SDK builds
+that include that compiler or a newer one. The attributes library supports
+.NET 10 and .NET Framework 4.8.1 consumers. `[Throws<TException>]` is a
+generic attribute, so applying it requires .NET 7 or later. A .NET Framework
+4.8.1 consumer uses the string form.
+
+The analyzer checks interface contracts at interface-typed call
 sites and validates source implementations against all mapped interface
 contracts. It trusts external implementations and does not validate a method
 inherited from a base class that does not itself implement the interface.
 General class virtual/override dispatch remains unsupported. `base` access is
-checked as the selected member.
+checked as the selected member. Attributes apply to classes and structs, not
+to an interface type; annotate each interface member. A derived interface
+member that redeclares a base member and has no contract of its own keeps
+the base contract.
 
 `[Throws<TException>]` requires `TException` to derive from `System.Exception`.
 The string form accepts a metadata name, a dotted nested name, or an
@@ -75,7 +85,11 @@ also checks user-defined operators and conversions, field and property
 initializers, synchronous `foreach` and `using` pattern methods, and
 deconstruction. `throw null` is reported as `NullReferenceException`.
 `nameof`, local functions, and lambdas are not treated as throws of the
-enclosing method.
+enclosing method. Diagnostic messages use namespace-qualified exception
+names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
+call inside `[DoesNotThrow]`, are EXC003.
+
+Rule reference: [`docs/README.md`](./docs/README.md).
 
 `[Throws]` currently covers synchronous exceptions only; it does not describe
 exceptions observed when awaiting a task or enumerating an iterator. Async and
@@ -91,8 +105,9 @@ dotnet cake build.cake --target=Validate
 ```
 
 The validation target also packs both libraries and builds the consumer sample
-against only those local packages, checking that the packaged analyzer reports
-its expected EXC002 and EXC003 diagnostics. GitVersion derives local package
+for `net10.0` and `net481` against those local packages, checking that the
+packaged analyzer reports its expected EXC002 and EXC003 diagnostics. The
+`net481` build also restores the .NET Framework reference assemblies. GitVersion derives local package
 versions from Git history; those build outputs are not evidence of a public
 release. Published stable and prerelease GitHub Releases are published to
 NuGet.org. Use GitVersion-compatible SemVer tags, such as `v1.0.0` or

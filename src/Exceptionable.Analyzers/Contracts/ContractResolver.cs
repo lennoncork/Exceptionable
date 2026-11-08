@@ -80,8 +80,16 @@ namespace Exceptionable.Analyzers.Contracts
                     : ExceptionContract.Unspecified;
         }
 
-        private ExceptionContract resolveEffectiveContract(IMethodSymbol method)
+        private ExceptionContract resolveEffectiveContract(IMethodSymbol method) =>
+            this.resolveEffectiveContract(method, new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default));
+
+        private ExceptionContract resolveEffectiveContract(IMethodSymbol method, HashSet<IMethodSymbol> seen)
         {
+            if (!seen.Add(method))
+            {
+                return ExceptionContract.Unspecified;
+            }
+
             for (IMethodSymbol? current = method; current is not null; current = current.OverriddenMethod)
             {
                 ExceptionContract methodContract = this.GetDirectContract(current);
@@ -100,6 +108,15 @@ namespace Exceptionable.Analyzers.Contracts
                 }
             }
 
+            if (method.ContainingType.TypeKind == TypeKind.Interface)
+            {
+                ExceptionContract inherited = this.resolveRedeclaredInterfaceContract(method, seen);
+                if (inherited.HasContract)
+                {
+                    return inherited;
+                }
+            }
+
             for (INamedTypeSymbol? type = method.ContainingType; type is not null; type = type.BaseType)
             {
                 ExceptionContract typeContract = this.GetDirectContract(type);
@@ -110,6 +127,110 @@ namespace Exceptionable.Analyzers.Contracts
             }
 
             return ExceptionContract.Unspecified;
+        }
+
+        private ExceptionContract resolveRedeclaredInterfaceContract(
+            IMethodSymbol method,
+            HashSet<IMethodSymbol> seen)
+        {
+            ImmutableArray<ExceptionContract>.Builder inherited = ImmutableArray.CreateBuilder<ExceptionContract>();
+            foreach (INamedTypeSymbol baseInterface in method.ContainingType.AllInterfaces)
+            {
+                foreach (IMethodSymbol baseMember in baseInterface.GetMembers(method.Name).OfType<IMethodSymbol>())
+                {
+                    if (!isInterfaceRedeclaration(method, baseMember))
+                    {
+                        continue;
+                    }
+
+                    ExceptionContract contract = this.resolveEffectiveContract(baseMember, seen);
+                    if (contract.HasContract)
+                    {
+                        inherited.Add(contract);
+                    }
+                }
+            }
+
+            return intersect(inherited.ToImmutable());
+        }
+
+        private static bool isInterfaceRedeclaration(IMethodSymbol method, IMethodSymbol baseMember)
+        {
+            if (method.Name != baseMember.Name ||
+                method.Arity != baseMember.Arity ||
+                method.Parameters.Length != baseMember.Parameters.Length ||
+                method.IsStatic != baseMember.IsStatic ||
+                method.MethodKind != baseMember.MethodKind)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < method.Parameters.Length; index++)
+            {
+                if (method.Parameters[index].RefKind != baseMember.Parameters[index].RefKind ||
+                    !typesMatch(method.Parameters[index].Type, baseMember.Parameters[index].Type, method, baseMember))
+                {
+                    return false;
+                }
+            }
+
+            return typesMatch(method.ReturnType, baseMember.ReturnType, method, baseMember);
+        }
+
+        private static bool typesMatch(
+            ITypeSymbol left,
+            ITypeSymbol right,
+            IMethodSymbol leftMethod,
+            IMethodSymbol rightMethod)
+        {
+            if (left is ITypeParameterSymbol leftParameter &&
+                right is ITypeParameterSymbol rightParameter &&
+                SymbolEqualityComparer.Default.Equals(leftParameter.DeclaringMethod, leftMethod) &&
+                SymbolEqualityComparer.Default.Equals(rightParameter.DeclaringMethod, rightMethod))
+            {
+                return leftParameter.Ordinal == rightParameter.Ordinal;
+            }
+
+            return SymbolEqualityComparer.Default.Equals(left, right);
+        }
+
+        private static ExceptionContract intersect(ImmutableArray<ExceptionContract> contracts)
+        {
+            if (contracts.IsEmpty)
+            {
+                return ExceptionContract.Unspecified;
+            }
+
+            if (contracts.Length == 1)
+            {
+                return contracts[0];
+            }
+
+            if (contracts.Any(contract => contract.IsDoesNotThrow))
+            {
+                return new ExceptionContract(true, []);
+            }
+
+            var kept = new List<INamedTypeSymbol>();
+            foreach (ExceptionContract contract in contracts)
+            {
+                foreach (INamedTypeSymbol candidate in contract.DeclaredTypes)
+                {
+                    if (kept.Any(existing => SymbolEqualityComparer.Default.Equals(existing, candidate)))
+                    {
+                        continue;
+                    }
+
+                    if (contracts.All(other => other.DeclaredTypes.Any(candidate.InheritsOrEquals)))
+                    {
+                        kept.Add(candidate);
+                    }
+                }
+            }
+
+            return kept.Count == 0
+                ? new ExceptionContract(true, [])
+                : new ExceptionContract(false, [.. kept]);
         }
 
         private ImmutableArray<ExceptionContract> resolveImplementedInterfaceContracts(IMethodSymbol method)
