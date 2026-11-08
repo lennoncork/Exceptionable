@@ -1,4 +1,5 @@
 #nullable enable
+using System.Text.RegularExpressions;
 
 var target = Argument("target", "Default");
 var configuration = Argument("configuration", "Release");
@@ -66,13 +67,36 @@ Task("Consumer")
     .IsDependentOn("Package")
     .Does(() =>
     {
+        var buildLog = MakeAbsolute(File("./.output/consumer-build.log")).FullPath;
+        var consumerPackages = MakeAbsolute(Directory("./.output/consumer-packages")).FullPath;
         DotNetBuild("./samples/Exceptionable.Consumer/Exceptionable.Consumer.csproj", new DotNetBuildSettings
         {
             Configuration = configuration,
             ArgumentCustomization = args => args
                 .Append("--source")
-                .AppendQuoted(MakeAbsolute(Directory("./.packages")).FullPath),
+                .AppendQuoted(MakeAbsolute(Directory("./.packages")).FullPath)
+                .Append($"/p:RestorePackagesPath=\"{consumerPackages}\"")
+                .Append("--verbosity")
+                .Append("normal")
+                .AppendQuoted($"/flp:logfile={buildLog};verbosity=normal"),
         });
+
+        var log = System.IO.File.ReadAllText(buildLog);
+        var exc002Count = Regex.Matches(log, @"Contracts\.cs\(\d+,\d+\): warning EXC002:")
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Distinct()
+            .Count();
+        var exc003Count = Regex.Matches(log, @"Contracts\.cs\(\d+,\d+\): warning EXC003:")
+            .Cast<Match>()
+            .Select(match => match.Value)
+            .Distinct()
+            .Count();
+        if (exc002Count != 1 || exc003Count != 1)
+        {
+            throw new CakeException(
+                $"Packaged consumer expected one EXC002 and one EXC003 diagnostic, but found {exc002Count} and {exc003Count}.");
+        }
     });
 
 Task("Validate")

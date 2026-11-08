@@ -175,6 +175,17 @@ that consume them are permitted. An explicit `throw` that cannot be shown to
 be caught is a violation. Returning normally is not required: non-exceptional
 termination such as an infinite loop is outside the contract.
 
+These meanings apply to synchronous, non-iterator methods. `[Throws]` on an
+`async` method does not currently describe exceptions observed when awaiting
+its returned task, and a contract on an iterator does not describe exceptions
+observed during enumeration. The analyzer skips those method bodies and their
+known call sites rather than treating deferred exceptions as immediate ones.
+It also skips calls whose return type is `Task`, `ValueTask`, `IEnumerable`,
+`IEnumerator`, `IAsyncEnumerable`, or `IAsyncEnumerator`, since the analyzer
+does not yet distinguish eager from deferred implementations of these APIs.
+Such annotations do not provide caller diagnostics until deferred-execution
+semantics are designed.
+
 The analyzer must not claim soundness for exceptions without a known contract.
 In particular, an unannotated call is not assumed to be non-throwing or
 `System.Exception`-throwing. This avoids flooding existing code with
@@ -193,6 +204,10 @@ information from Roslyn. The initial implementation should recognize:
 - Propagation permitted by the enclosing method's effective declared set.
 - `finally` blocks conservatively: an exception thrown from a `finally` block
   can replace a pending exception and is not caught by the same `try`.
+- Contracts on interface methods at calls statically bound through an
+  interface-typed value. Source implementation methods are checked against
+  every implemented interface contract, including explicit implementations,
+  inherited interface members, and multiple interfaces mapped to one method.
 
 Use Roslyn's operation, control-flow, and symbol APIs rather than text
 matching. Analyze operations only in reachable control-flow blocks. A catch
@@ -202,22 +217,51 @@ prove handling. When type or flow information is unknown, prefer not to report
 a definite violation; report an unsupported/unknown case only if a later
 diagnostic is introduced specifically for it.
 
+An interface call uses the contract declared by the statically selected
+interface member; calls through different interfaces use their respective
+contracts. An implementation must satisfy all known interface contracts it
+implements, so conflicting declarations constrain the implementation to the
+intersection of their permitted exception sets. Such declarations are not
+themselves conflicts when placed on separate interfaces. Explicit and implicit
+implementations are mapped with Roslyn symbols, and inherited interface
+members retain the contract on the member's declaring interface. An interface
+contract is trusted for external implementations; a source method inherited
+from a base class that does not itself implement the interface is not
+validated against a derived class's interface contract. General class
+virtual/override dispatch remains unsupported because the selected
+implementation and its contract are not known at the call site.
+
+For `throw expression`, report the expression's static exception type before
+the implicit conversion to `System.Exception` required by C#. For `throw;`,
+use the enclosing catch type; a bare `catch` is treated as
+`System.Exception`. Catch-all clauses handle known exceptions when they
+enclose the operation in the `try` body, but do not handle a rethrow from
+their own handler.
+
 ### Deferred analysis cases
 
 Keep the first release focused and document its limits. Add explicit support
 in later phases for:
 
-- `async` methods, including exceptions observed when awaiting a task.
-- Iterators, where exceptions may occur during enumeration.
-- Lambdas and delegates; virtual/interface dispatch is skipped when the target
-  is virtual, abstract, or overridden.
+- `async` methods, including exceptions observed when awaiting a task, and
+  task-returning calls. An eventual model must distinguish invocation from
+  `await`, handle catches around `await`, and propagate only exceptions
+  observed by the caller.
+- Iterators, where exceptions can arise during `MoveNext` or asynchronous
+  enumeration rather than when the iterator method is called. A model must
+  account for enumeration catches and deferred caller contracts.
+- Lambdas and delegates; general class virtual/override dispatch remains
+  unsupported because the runtime target may differ from the statically
+  selected method.
 - Non-constant exception filters and complex rethrow/data-flow cases.
 - Generic exception types or exception type parameters, if introduced.
 - External APIs with contracts distributed through reference assemblies.
 
 Until a case is supported, it must not produce misleading certainty. Async
-methods and iterators are currently skipped; document the limitation in
-analyzer help text and tests.
+and iterator bodies and their recognized deferred call sites are skipped;
+custom awaitables, custom enumerable abstractions, and external iterator
+implementations that cannot be identified from source remain outside the
+current guarantees. Document these limitations in help text and tests.
 
 ## 8. Diagnostics
 
@@ -347,6 +391,8 @@ packages in a consumer project.
 - Check calls to annotated methods against caller catches and declared
   contracts (EXC003).
 - Cover constructors, accessors, class-level contracts, and precedence.
+- Honor contracts at interface-typed call sites and validate source interface
+  implementations against all mapped interface contracts.
 - Test that unannotated calls do not produce speculative diagnostics.
 
 ### Phase 4 — Quality and usability
@@ -362,8 +408,7 @@ packages in a consumer project.
 
 - Design and test async/await and iterator semantics before enabling rules
   for those constructs.
-- Consider override/interface contract compatibility and metadata-based
-  contracts.
+- Consider override compatibility and metadata-based contracts.
 - Revisit the string-based API and consider a strongly typed alternative
   while preserving existing annotations.
 
@@ -407,11 +452,19 @@ The initial implementation confirms these decisions:
 - Diagnostics use the `EXC` prefix. EXC001-EXC003 are enabled warnings and
   EXC004-EXC005 are enabled errors.
 - Class-level contracts apply to methods, constructors, and accessors.
+- Interface contracts apply at interface-typed call sites. Source
+  implementations are checked against each mapped interface contract;
+  external implementations and methods inherited from a non-implementing
+  base class are trusted rather than proven. Class virtual/override
+  dispatch remains unsupported.
 - Ambiguous short exception names are errors; attribute strings do not use
   source-file `using` directives.
 - GitVersion derives package versions from Git history. Stable and prerelease
   GitHub Releases both publish their GitVersion-generated package versions.
 
-Override and interface contract compatibility remains open and must be
-resolved before analyzing virtual or interface dispatch. Those dispatch cases
-remain unsupported in the initial implementation.
+Async/await and iterator contracts remain open. `[Throws]` currently describes
+only synchronous exceptions; it does not describe faults observed by awaiting
+tasks or enumerating iterators. Task-like and standard enumerable-returning
+calls are skipped to avoid reporting deferred exceptions as immediate ones.
+Class override compatibility also remains open, so those call sites stay
+unsupported.

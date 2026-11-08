@@ -24,7 +24,58 @@ namespace Exceptionable.Analyzers.Tests
         {
             var diagnostics = getDiagnostics(getTestCase(nameof(ThrowsMethod_ReportsExc002_WhenTypeEscapes)));
 
-            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC002"));
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+        }
+
+        [Test]
+        public void ThrowsDeclaredException_DoesNotReportExc002()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(ThrowsDeclaredException_DoesNotReportExc002)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC002"));
+        }
+
+        [Test]
+        public void ThrowsDeclaredExceptionWithExceptionInner_DoesNotReportExc002()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(ThrowsDeclaredExceptionWithExceptionInner_DoesNotReportExc002)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC002"));
+        }
+
+        [Test]
+        public void ThrowsDerivedException_DoesNotReportExc002WhenBaseIsDeclared()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(ThrowsDerivedException_DoesNotReportExc002WhenBaseIsDeclared)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC002"));
+        }
+
+        [Test]
+        public void RethrowInThrowsMethod_ReportsCatchType()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(RethrowInThrowsMethod_ReportsCatchType)));
+
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+        }
+
+        [Test]
+        public void BareRethrowInCatchAll_ReportsExceptionType()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(BareRethrowInCatchAll_ReportsExceptionType)));
+
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'Exception'"));
+        }
+
+        [Test]
+        public void CatchAllHandler_DoesNotReportExc001()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(CatchAllHandler_DoesNotReportExc001)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC001"));
         }
 
         [Test]
@@ -205,6 +256,65 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void InterfaceCall_UsesDeclaredContract()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(InterfaceCall_UsesDeclaredContract)));
+
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'IOException'"));
+        }
+
+        [Test]
+        public void InterfaceImplementation_AllowsDeclaredDerivedException()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(InterfaceImplementation_AllowsDeclaredDerivedException)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC002"));
+        }
+
+        [Test]
+        public void InterfaceImplementation_ReportsUndeclaredException()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(InterfaceImplementation_ReportsUndeclaredException)));
+
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'InvalidOperationException'"));
+        }
+
+        [Test]
+        public void DoesNotThrowInterfaceContract_ReportsEscapingImplementationException()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(DoesNotThrowInterfaceContract_ReportsEscapingImplementationException)));
+
+            Assert.That(diagnostics.Count(diagnostic => diagnostic.Id == "EXC001"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExplicitInterfaceImplementation_ReportsUndeclaredException()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(ExplicitInterfaceImplementation_ReportsUndeclaredException)));
+
+            Assert.That(diagnostics.Count(diagnostic => diagnostic.Id == "EXC002"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void InheritedInterfaceContract_IsUsedAtCallSite()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(InheritedInterfaceContract_IsUsedAtCallSite)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void MultipleInterfaceContracts_AreAllValidated()
+        {
+            var diagnostics = getDiagnostics(getTestCase(nameof(MultipleInterfaceContracts_AreAllValidated)));
+
+            var diagnostic = diagnostics.Single(item => item.Id == "EXC002");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'ArgumentException'"));
+        }
+
+        [Test]
         public void UnrelatedAttributeWithSameShortName_IsNotAnExceptionableContract()
         {
             var diagnostics = getDiagnostics(getTestCase(nameof(UnrelatedAttributeWithSameShortName_IsNotAnExceptionableContract)));
@@ -229,6 +339,8 @@ namespace Exceptionable.Analyzers.Tests
             var diagnostics = getDiagnostics(getTestCase(nameof(AsyncAndIteratorMethods_AreNotAnalyzedYet)));
 
             Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC001"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC002"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
         }
 
         [Test]

@@ -92,7 +92,9 @@ namespace Exceptionable.Analyzers
                         return;
                     }
 
-                    var exceptionType = throwOperation.Exception?.Type;
+                    var exceptionType = throwOperation.Exception is null
+                        ? null
+                        : getThrownExceptionType(throwOperation.Exception);
                     if (exceptionType is null)
                     {
                         exceptionType = getRethrownExceptionType(throwOperation, compilation);
@@ -106,19 +108,25 @@ namespace Exceptionable.Analyzers
                     }
 
                     var contract = getEffectiveContract(containingMethod, compilation);
-                    if (!contract.HasContract || isCaught(throwOperation, exceptionType))
+                    var interfaceContracts = getImplementedInterfaceContracts(containingMethod, compilation);
+                    if ((!contract.HasContract && interfaceContracts.Length == 0) ||
+                        isCaught(throwOperation, exceptionType))
                     {
                         return;
                     }
 
-                    if (contract.IsDoesNotThrow)
+                    if (contract.IsDoesNotThrow || interfaceContracts.Any(interfaceContract => interfaceContract.IsDoesNotThrow))
                     {
                         operationContext.ReportDiagnostic(Diagnostic.Create(
                             doesNotThrowEscapes,
                             throwOperation.Syntax.GetLocation(),
                             exceptionType.Name));
                     }
-                    else if (!contract.DeclaredTypes.Any(declaredType => inheritsOrEquals(exceptionType, declaredType)))
+                    else if ((contract.HasContract &&
+                                !contract.DeclaredTypes.Any(declaredType => inheritsOrEquals(exceptionType, declaredType))) ||
+                        interfaceContracts.Any(interfaceContract =>
+                            !interfaceContract.IsDoesNotThrow &&
+                            !interfaceContract.DeclaredTypes.Any(declaredType => inheritsOrEquals(exceptionType, declaredType))))
                     {
                         operationContext.ReportDiagnostic(Diagnostic.Create(
                             throwsMismatch,
@@ -140,7 +148,10 @@ namespace Exceptionable.Analyzers
                     var callerContract = getEffectiveContract(callerMethod, compilation);
                     foreach (var targetMethod in getTargetMethods(operationContext.Operation))
                     {
-                        if (isDispatchUncertain(targetMethod))
+                        if ((isDispatchUncertain(targetMethod) &&
+                                targetMethod.ContainingType.TypeKind != TypeKind.Interface) ||
+                            !isSupportedMethod(targetMethod) ||
+                            isDeferredReturnType(targetMethod.ReturnType))
                         {
                             continue;
                         }
@@ -254,6 +265,23 @@ namespace Exceptionable.Analyzers
             }
 
             return true;
+        }
+
+        private static bool isDeferredReturnType(ITypeSymbol returnType)
+        {
+            if (returnType is not INamedTypeSymbol namedType)
+            {
+                return false;
+            }
+
+            var namespaceName = namedType.ContainingNamespace.ToDisplayString();
+            return (namespaceName == "System.Threading.Tasks" &&
+                    (namedType.Name == "Task" || namedType.Name == "ValueTask")) ||
+                (namespaceName == "System.Collections" &&
+                    (namedType.Name == "IEnumerable" || namedType.Name == "IEnumerator")) ||
+                (namespaceName == "System.Collections.Generic" &&
+                    (namedType.Name == "IEnumerable" || namedType.Name == "IEnumerator" ||
+                        namedType.Name == "IAsyncEnumerable" || namedType.Name == "IAsyncEnumerator"));
         }
 
         private static bool isDispatchUncertain(IMethodSymbol method) =>
@@ -404,6 +432,47 @@ namespace Exceptionable.Analyzers
             return ContractInfo.Unspecified;
         }
 
+        private static ImmutableArray<ContractInfo> getImplementedInterfaceContracts(
+            IMethodSymbol method,
+            Compilation compilation)
+        {
+            if (method.ContainingType.TypeKind == TypeKind.Interface)
+            {
+                return ImmutableArray<ContractInfo>.Empty;
+            }
+
+            var interfaceMembers = method.ExplicitInterfaceImplementations
+                .Concat(method.ContainingType.AllInterfaces.SelectMany(type => type.GetMembers().OfType<IMethodSymbol>()));
+            var seenMembers = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+            var contracts = ImmutableArray.CreateBuilder<ContractInfo>();
+
+            foreach (var interfaceMember in interfaceMembers)
+            {
+                if (!seenMembers.Add(interfaceMember))
+                {
+                    continue;
+                }
+
+                var implementation = method.ContainingType.FindImplementationForInterfaceMember(interfaceMember) as IMethodSymbol;
+                if (implementation is null || !sameMethod(implementation, method))
+                {
+                    continue;
+                }
+
+                var contract = getEffectiveContract(interfaceMember, compilation);
+                if (contract.HasContract)
+                {
+                    contracts.Add(contract);
+                }
+            }
+
+            return contracts.ToImmutable();
+        }
+
+        private static bool sameMethod(IMethodSymbol first, IMethodSymbol second) =>
+            SymbolEqualityComparer.Default.Equals(first, second) ||
+            SymbolEqualityComparer.Default.Equals(first.OriginalDefinition, second.OriginalDefinition);
+
         private static ContractInfo getDirectContract(ISymbol symbol, Compilation compilation)
         {
             var attributes = symbol.GetAttributes();
@@ -449,6 +518,7 @@ namespace Exceptionable.Analyzers
             for (var current = operation.Parent; current is not null; current = current.Parent)
             {
                 if (current is not ITryOperation tryOperation ||
+                    tryOperation.Catches.Any(catchClause => isDescendantOf(operation, catchClause.Handler)) ||
                     !isDescendantOf(operation, tryOperation.Body))
                 {
                     continue;
@@ -456,9 +526,9 @@ namespace Exceptionable.Analyzers
 
                 foreach (var catchClause in tryOperation.Catches)
                 {
-                    if (catchClause.ExceptionType is null ||
-                        !isFilterDefinitelyTrue(catchClause.Filter) ||
-                        !inheritsOrEquals(exceptionType, catchClause.ExceptionType))
+                    if (!isFilterDefinitelyTrue(catchClause.Filter) ||
+                        (catchClause.ExceptionType is not null &&
+                            !inheritsOrEquals(exceptionType, catchClause.ExceptionType)))
                     {
                         continue;
                     }
@@ -501,12 +571,41 @@ namespace Exceptionable.Analyzers
                 if (current is ICatchClauseOperation catchClause &&
                     isDescendantOf(throwOperation, catchClause.Handler))
                 {
-                    return catchClause.ExceptionType ??
-                        compilation.GetTypeByMetadataName("System.Exception");
+                    if (catchClause.Syntax is CatchClauseSyntax rethrowCatchSyntax &&
+                        rethrowCatchSyntax.Declaration is null)
+                    {
+                        return compilation.GetTypeByMetadataName("System.Exception");
+                    }
+
+                    return catchClause.ExceptionType ?? compilation.GetTypeByMetadataName("System.Exception");
                 }
             }
 
+            var catchClauseSyntax = throwOperation.Syntax.AncestorsAndSelf()
+                .OfType<CatchClauseSyntax>()
+                .FirstOrDefault();
+            if (catchClauseSyntax is null ||
+                !catchClauseSyntax.Block.Span.Contains(throwOperation.Syntax.Span))
+            {
+                return null;
+            }
+
+            if (catchClauseSyntax.Declaration is null)
+            {
+                return compilation.GetTypeByMetadataName("System.Exception");
+            }
+
             return null;
+        }
+
+        private static ITypeSymbol? getThrownExceptionType(IOperation exception)
+        {
+            while (exception is IConversionOperation conversion && conversion.IsImplicit)
+            {
+                exception = conversion.Operand;
+            }
+
+            return exception.Type;
         }
 
         private static bool inheritsOrEquals(ITypeSymbol actual, ITypeSymbol expected)

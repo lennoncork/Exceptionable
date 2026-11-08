@@ -1,14 +1,22 @@
-// Tests throws inside async and iterator methods, which are currently unsupported.
-// Expected behavior: do not report EXC001 for either method.
+// Tests async and iterator bodies and their call sites, which are currently unsupported.
+// Expected behavior: do not report EXC001, EXC002, or EXC003 for these methods.
 using Exceptionable;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 class C {
-    [DoesNotThrow] async System.Threading.Tasks.Task AsyncMethod() {
-        await System.Threading.Tasks.Task.Yield();
+    [Throws("System.Exception")] async Task AsyncMethod() {
+        await Task.Yield();
         throw new System.Exception();
     }
-    [DoesNotThrow] IEnumerable<int> Iterator() {
+    [Throws("System.Exception")] IEnumerable<int> Iterator() {
         yield return 1;
         throw new System.Exception();
+    }
+    [DoesNotThrow] void CallAsync() {
+        _ = AsyncMethod();
+    }
+    [DoesNotThrow] void Enumerate() {
+        foreach (var value in Iterator()) {
+        }
     }
 }
