@@ -113,8 +113,108 @@ namespace Exceptionable.Analyzers.Analysis
             // Nullable annotations are not a runtime check. EXC007 still treats a
             // non-nullable reference parameter as a promise that the caller will not pass null.
             return this.isRedundantGuard(throwOperation, method, named)
-                ? ClassifiedThrow.Redundant
+                ? new ClassifiedThrow(GuardKind.RedundantNullable, named)
                 : new ClassifiedThrow(GuardKind.ImplicitContract, named);
+        }
+
+        internal ImmutableArray<INamedTypeSymbol> GetObservedEscapingTypes(
+            IMethodSymbol method,
+            ContractResolver contracts)
+        {
+            if (!MethodAnalysisPolicy.IsSupportedMethod(method) || this.isGenerated(method))
+            {
+                return [];
+            }
+
+            var types = new List<INamedTypeSymbol>();
+            foreach (IThrowOperation throwOperation in this.enumerateMemberThrows(method))
+            {
+                ClassifiedThrow classified = this.classify(throwOperation, method);
+                if (classified.ExceptionType is null ||
+                    classified.Kind is not (GuardKind.ImplicitContract or GuardKind.RedundantNullable))
+                {
+                    continue;
+                }
+
+                addObserved(types, classified.ExceptionType);
+            }
+
+            foreach (IOperation root in this.enumerateRoots(method))
+            {
+                this.collectCallExceptions(root, method, contracts, types);
+            }
+
+            return types.ToImmutableArray();
+        }
+
+        private void collectCallExceptions(
+            IOperation operation,
+            IMethodSymbol caller,
+            ContractResolver contracts,
+            List<INamedTypeSymbol> types)
+        {
+            if (operation is ILocalFunctionOperation or IAnonymousFunctionOperation or INameOfOperation)
+            {
+                return;
+            }
+
+            if (!OperationScope.IsIgnored(operation) && this.reachability.IsReachable(operation))
+            {
+                collectTargets(operation, caller, contracts, types, OperationTargetResolver.GetTargetMethods(operation), false);
+                collectTargets(operation, caller, contracts, types, OperationTargetResolver.GetPatternMethods(operation), true);
+            }
+
+            foreach (IOperation child in operation.ChildOperations)
+            {
+                this.collectCallExceptions(child, caller, contracts, types);
+            }
+        }
+
+        private static void collectTargets(
+            IOperation operation,
+            IMethodSymbol caller,
+            ContractResolver contracts,
+            List<INamedTypeSymbol> types,
+            IEnumerable<IMethodSymbol> targets,
+            bool allowDeferredReturn)
+        {
+            foreach (IMethodSymbol target in targets)
+            {
+                if (target.IsSameMethod(caller) || !isAnalyzableTarget(target, operation, allowDeferredReturn))
+                {
+                    continue;
+                }
+
+                foreach (INamedTypeSymbol declaredType in contracts.GetEffectiveContract(target).DeclaredTypes)
+                {
+                    if (!ExceptionFlowAnalysis.IsCaught(operation, declaredType))
+                    {
+                        addObserved(types, declaredType);
+                    }
+                }
+            }
+        }
+
+        private static bool isAnalyzableTarget(
+            IMethodSymbol target,
+            IOperation operation,
+            bool allowDeferredReturn)
+        {
+            if (!MethodAnalysisPolicy.HasCertainDispatch(target, operation) ||
+                !MethodAnalysisPolicy.IsSupportedMethod(target))
+            {
+                return false;
+            }
+
+            return allowDeferredReturn || !MethodAnalysisPolicy.IsDeferredReturnType(target.ReturnType);
+        }
+
+        private static void addObserved(List<INamedTypeSymbol> types, INamedTypeSymbol exceptionType)
+        {
+            if (!types.Exists(existing => SymbolEqualityComparer.Default.Equals(existing, exceptionType)))
+            {
+                types.Add(exceptionType);
+            }
         }
 
         private bool isRedundantGuard(
@@ -499,8 +599,6 @@ namespace Exceptionable.Analyzers.Analysis
         private readonly struct ClassifiedThrow
         {
             internal static ClassifiedThrow None { get; } = new(GuardKind.None, null);
-
-            internal static ClassifiedThrow Redundant { get; } = new(GuardKind.RedundantNullable, null);
 
             internal ClassifiedThrow(GuardKind kind, INamedTypeSymbol? exceptionType)
             {

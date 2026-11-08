@@ -53,7 +53,11 @@ namespace Exceptionable.Analyzers
                     OperationKind.Try);
 
                 startContext.RegisterSymbolAction(
-                    symbolContext => ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext),
+                    symbolContext =>
+                    {
+                        ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext);
+                        UnusedDeclaredExceptionAnalysis.Analyze(symbolContext, compilationContext);
+                    },
                     SymbolKind.Method,
                     SymbolKind.NamedType,
                     SymbolKind.Property,

@@ -59,6 +59,15 @@ namespace Exceptionable.Analyzers.Diagnostics
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC006.md");
 
+        internal static readonly DiagnosticDescriptor UnusedDeclaredException = new(
+            "EXC008",
+            "Declared exception does not escape",
+            "Exception type '{0}' is declared by [Throws] on '{1}' but does not escape",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC008.md");
+
         internal static readonly DiagnosticDescriptor RedundantArgumentNullException = new(
             "EXC007",
             "Unnecessary ArgumentNullException",
@@ -76,6 +85,7 @@ namespace Exceptionable.Analyzers.Diagnostics
                 ThrowsUsage,
                 ConflictingContracts,
                 UnnecessaryTryCatch,
+                UnusedDeclaredException,
                 RedundantArgumentNullException);
     }
 }

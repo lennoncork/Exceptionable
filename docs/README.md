@@ -14,5 +14,6 @@ settings do not turn analysis on. Behavior and limits are defined in
 | [EXC005](diagnostics/EXC005.md) | Error | `[DoesNotThrow]` and `[Throws]` conflict on the same target. |
 | [EXC006](diagnostics/EXC006.md) | Warning | A `try`/`catch` cannot observe a tracked exception. |
 | [EXC007](diagnostics/EXC007.md) | Warning | Remove `ArgumentNullException` from a nullable-aware constructor. |
+| [EXC008](diagnostics/EXC008.md) | Warning | A `[Throws]` type does not escape. |
 
 Messages name exception types with their namespace-qualified display names.

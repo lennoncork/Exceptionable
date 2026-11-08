@@ -234,6 +234,12 @@ use the explicit contract to control what callers must handle. A throw
 outside an explicit `[Throws]` set is EXC002, and callers see only that set.
 `[DoesNotThrow]` is not replaced; the throw remains EXC001.
 
+When that member also produces a known escaping exception, a declared type
+that no reachable throw or known call produces is EXC008. A derived throw or
+call satisfies a declared base type. A `[Throws]` attribute on a member with
+no known escaping exception remains the published contract and is not
+EXC008. Caught and unreachable throws do not keep a declaration.
+
 A call does not copy the callee's contract onto the caller. The caller must
 catch the exception or declare it, or the call is EXC003. A member that only
 calls a throwing member is not given the callee's contract. A constructor
@@ -435,8 +441,10 @@ categories, default severities, and help links. The catalog is
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, or event. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
 | EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled. Remove the throw; callers are not expected to pass null. | Warning |
+| EXC008 | A `[Throws]` type does not escape, and the member produces some other known escaping exception. Remove the stale declaration or restore a throw or call that produces it. | Warning |
 
-EXC001 and EXC002 report explicit throws. A call whose contract is explicit
+EXC001 and EXC002 report explicit throws. EXC008 reports a `[Throws]`
+attribute whose type no longer escapes. A call whose contract is explicit
 or inferred is EXC003 even when the caller is `[DoesNotThrow]`. A throw
 covered by the inferred set is not EXC002. A nullable-redundant constructor
 `ArgumentNullException` is EXC007 and is not also EXC002. Messages name
@@ -583,6 +591,9 @@ phase 4 documentation:
   replaces that inference. The generator persists the inferred contract in
   the compiled assembly for referencing compilations. A nullable-redundant
   constructor `ArgumentNullException` is EXC007 and is not inferred.
+- EXC008 warns when a `[Throws]` type is stale relative to the known escaping
+  exceptions. A `[Throws]` member with no known escaping exception is left
+  unchanged.
 - Supported hosts are recorded in section 13.
 
 Still open:
@@ -635,6 +646,9 @@ Minimum acceptance criteria for the initial usable release:
   EXC007 applies.
 - An explicit `[Throws]` or `[DoesNotThrow]` is the whole contract callers
   see. Inferred types are not added to it.
+- A `[Throws]` type that no reachable throw or known call produces is EXC008
+  when the member produces some other known escaping exception. A member
+  whose `[Throws]` contract has no known escaping exception is not EXC008.
 - A referencing compilation reports EXC003 for an inferred contract recorded
   in a referenced assembly, without that member's source.
 - A nullable-aware constructor that throws `ArgumentNullException` for a
@@ -662,7 +676,7 @@ The initial implementation confirms these decisions:
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003, EXC006, and EXC007 are
+- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006-EXC008 are
   enabled warnings and EXC004-EXC005 are enabled errors.
 - A reachable uncaught throw on a supported synchronous member adds an
   inferred `[Throws]` contract for that exception. The generator records it
@@ -672,9 +686,10 @@ The initial implementation confirms these decisions:
   the constructor declaration's nullable annotation context and drops only
   that redundant constructor `ArgumentNullException`. `[AllowNull]` and a
   nullable reference parameter keep the inferred contract. `ThrowIfNull` is
-  not an implicit source. A closed generic exception type may be recorded
-  but not resolved from metadata when its display name is not a metadata
-  type name.
+  not an implicit source. EXC008 compares a direct `[Throws]` set with the
+  known escaping throws and calls of the members that set governs. A closed
+  generic exception type may be recorded but not resolved from metadata when
+  its display name is not a metadata type name.
 - EXC006 reports a `try`/`catch` whose reachable `try` body cannot throw a
   tracked exception because every call there has a `[DoesNotThrow]` contract
   and every other reachable operation is non-throwing. It is not reported for

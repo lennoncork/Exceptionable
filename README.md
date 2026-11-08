@@ -89,7 +89,9 @@ enclosing method. Diagnostic messages use namespace-qualified exception
 names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
 call inside `[DoesNotThrow]`, are EXC003. A reachable uncaught throw is an
 inferred `[Throws]` contract for that member. An explicit `[Throws]` or
-`[DoesNotThrow]` replaces the inference. The analyzer package includes a
+`[DoesNotThrow]` replaces the inference. When the body later throws a
+different known exception, EXC002 reports the new throw and EXC008 reports
+the declared type that no longer escapes. The analyzer package includes a
 source generator that writes each inferred contract into the compiled
 assembly. A consuming project that references that assembly and enables
 analysis reports EXC003 from the recorded contract, without the library's
