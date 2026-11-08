@@ -5,54 +5,7 @@ namespace Exceptionable.Analyzers.Tests
 {
     public class ExceptionTypeResolverTests
     {
-        private const string source = @"
-namespace First
-{
-    public class SharedException : System.Exception { }
-    public class CustomException : System.Exception { }
-}
-namespace Second
-{
-    public class SharedException : System.Exception { }
-}
-namespace Other
-{
-    public class NotAnException { }
-    public class CustomException { }
-}
-namespace Nested
-{
-    public class Outer
-    {
-        public class NestedException : System.Exception { }
-    }
-}
-public class Outer
-{
-    public class NestedException : System.Exception { }
-}
-namespace N.Outer
-{
-    public class NestedException { }
-}
-namespace N
-{
-    public class Outer
-    {
-        public class NestedException : System.Exception { }
-    }
-}
-namespace Ambiguous.Outer
-{
-    public class NestedException : System.Exception { }
-}
-namespace Ambiguous
-{
-    public class Outer
-    {
-        public class NestedException : System.Exception { }
-    }
-}";
+        private static readonly string source = ExceptionableAnalyzerTests.GetTestCase("ExceptionTypeResolverTests.SharedTypes.Source1");
 
         [Test]
         public void ResolveExceptionType_ResolvesFullyQualifiedAndUniqueShortNames()

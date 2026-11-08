@@ -1,7 +1,7 @@
+using System;
+
 namespace Exceptionable
 {
-    using System;
-
     /// <summary>
     /// Declares an exception type that may escape the attributed class, struct, member, property, or event.
     /// Interface-wide contracts are not supported; annotate each interface member.

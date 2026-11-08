@@ -12,16 +12,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsCaught_CatchInEnclosingTryHandlesTheException()
         {
-            const string source = @"
-using System;
-class C
-{
-    void M()
-    {
-        try { throw new InvalidOperationException(); }
-        catch (InvalidOperationException) { }
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsCaught_CatchInEnclosingTryHandlesTheException.Source1");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
             INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
@@ -32,16 +23,7 @@ class C
         [Test]
         public void IsCaught_CatchDoesNotCatchAnExceptionThrownFromItsOwnHandler()
         {
-            const string source = @"
-using System;
-class C
-{
-    void M()
-    {
-        try { }
-        catch { throw new InvalidOperationException(); }
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsCaught_CatchDoesNotCatchAnExceptionThrownFromItsOwnHandler.Source2");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
             INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
@@ -52,22 +34,7 @@ class C
         [Test]
         public void GetRethrownExceptionType_UsesCatchTypeAndCatchAllBaseType()
         {
-            const string source = @"
-using System;
-class C
-{
-    void Typed()
-    {
-        try { }
-        catch (InvalidOperationException) { throw; }
-    }
-
-    void CatchAll()
-    {
-        try { }
-        catch { throw; }
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("GetRethrownExceptionType_UsesCatchTypeAndCatchAllBaseType.Source3");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation[] throws = [.. compilation.SyntaxTrees.Single().GetRoot().DescendantNodes()
                 .OfType<ThrowStatementSyntax>()
@@ -84,13 +51,7 @@ class C
         [Test]
         public void GetThrownExceptionType_UsesThrownExpressionType()
         {
-            const string source = @"
-using System;
-class CustomException : Exception { }
-class C
-{
-    void M() { throw new CustomException(); }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("GetThrownExceptionType_UsesThrownExpressionType.Source4");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
 

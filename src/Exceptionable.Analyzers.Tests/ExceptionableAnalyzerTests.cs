@@ -630,6 +630,21 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void SynchronousTaskReturningMethodsAnalyzeImmediateThrowsButCallsRemainDeferred()
+        {
+            Diagnostic[] diagnostics = GetDiagnostics(
+                ExceptionableAnalyzerTests.GetTestCase("SynchronousTaskReturningMethodsAnalyzeImmediateThrowsButCallsRemainDeferred.Source1"));
+
+            Diagnostic[] escapes = diagnostics.Where(diagnostic => diagnostic.Id == "EXC001").ToArray();
+            Assert.That(escapes, Has.Length.EqualTo(2));
+            Assert.That(escapes.Select(diagnostic => diagnostic.GetMessage()),
+                Has.Some.Contains("System.InvalidOperationException"));
+            Assert.That(escapes.Select(diagnostic => diagnostic.GetMessage()),
+                Has.Some.Contains("System.NotSupportedException"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
         public void EditorConfigDisable_OverridesProjectEnable()
         {
             Diagnostic[] diagnostics = getDiagnostics(
@@ -980,14 +995,16 @@ namespace Exceptionable.Analyzers.Tests
             string? projectSetting = "enable",
             string? fileSetting = "enable",
             bool includeExceptionableAttributes = true,
-            IEnumerable<MetadataReference>? additionalReferences = null)
+            IEnumerable<MetadataReference>? additionalReferences = null,
+            string assemblyName = "ExceptionableTests")
         {
             return getDiagnostics(
                 source,
                 projectSetting,
                 fileSetting,
                 includeExceptionableAttributes,
-                additionalReferences);
+                additionalReferences,
+                assemblyName);
         }
 
         internal static string GetTestCase(string testName)
@@ -1000,7 +1017,8 @@ namespace Exceptionable.Analyzers.Tests
             string? projectSetting = "enable",
             string? fileSetting = "enable",
             bool includeExceptionableAttributes = true,
-            IEnumerable<MetadataReference>? additionalReferences = null)
+            IEnumerable<MetadataReference>? additionalReferences = null,
+            string assemblyName = "ExceptionableTests")
         {
             List<MetadataReference> references = [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(Path.PathSeparator)
@@ -1018,7 +1036,7 @@ namespace Exceptionable.Analyzers.Tests
 
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, TestCompilation.ParseOptions);
             CSharpCompilation compilation = CSharpCompilation.Create(
-                assemblyName: "ExceptionableTests",
+                assemblyName: assemblyName,
                 syntaxTrees: [syntaxTree],
                 references: references,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));

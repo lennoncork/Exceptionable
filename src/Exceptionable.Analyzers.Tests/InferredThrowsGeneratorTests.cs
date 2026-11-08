@@ -2,6 +2,7 @@ using System;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Generation;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,21 +14,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void Generator_RecordsEscapingThrow_ForDownstreamCaller()
         {
-            const string library = """
-                namespace Library;
-                public class Resource
-                {
-                    public Resource(string name)
-                    {
-                        if (name is null)
-                        {
-                            throw new System.ArgumentNullException(nameof(name));
-                        }
-
-                        throw new System.InvalidOperationException();
-                    }
-                }
-                """;
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsEscapingThrow_ForDownstreamCaller.Source1");
             MetadataReference reference = emit(library, out _);
             Assert.That(
                 readRecorded(reference),
@@ -38,15 +25,7 @@ namespace Exceptionable.Analyzers.Tests
                 }));
 
             Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                """
-                class Caller
-                {
-                    void M()
-                    {
-                        _ = new Library.Resource("a");
-                    }
-                }
-                """,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsEscapingThrow_ForDownstreamCaller.Source2"),
                 additionalReferences: [reference]);
 
             string[] messages = diagnostics
@@ -59,39 +38,118 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void Generator_ResolvesClosedGenericExceptionTypesAcrossAssemblies()
+        {
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_ResolvesClosedGenericExceptionTypesAcrossAssemblies.Source3");
+            MetadataReference reference = emit(library, out _);
+            (string MemberId, string ExceptionType)[] records = readRecorded(reference);
+            Assert.That(records, Has.Length.EqualTo(3));
+            Assert.That(records.Select(record => record.ExceptionType),
+                Has.All.StartsWith("exceptionable-type-v1:"));
+            CSharpCompilation consumer = TestCompilation.Create(string.Empty)
+                .WithAssemblyName("InferredThrowsGenericConsumer")
+                .AddReferences(reference);
+            ExceptionTypeResolver resolver = new(consumer);
+            foreach ((string _, string exceptionType) in records)
+            {
+                Assert.That(
+                    InferredThrowsMetadata.ResolveExceptionType(exceptionType, consumer, resolver),
+                    Is.Not.Null,
+                    exceptionType);
+            }
+
+            assertCaller(
+                reference,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_ResolvesClosedGenericExceptionTypesAcrossAssemblies.Source4"),
+                "Library.GenericException<int>");
+            assertCaller(
+                reference,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_ResolvesClosedGenericExceptionTypesAcrossAssemblies.Source5"),
+                "Library.Outer<string>.NestedException<int>");
+            assertCaller(
+                reference,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_ResolvesClosedGenericExceptionTypesAcrossAssemblies.Source6"),
+                "Library.GenericException<int[]>");
+        }
+
+        [Test]
+        public void Generator_AvoidsConflictingHelperAttribute()
+        {
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_AvoidsConflictingHelperAttribute.Source7");
+
+            MetadataReference reference = emit(library, out string? generated);
+            Assert.That(generated, Does.Contain("InferredThrowsAttribute2"));
+            CSharpCompilation reader = TestCompilation.Create(string.Empty)
+                .WithAssemblyName("CollisionReader")
+                .AddReferences(reference);
+            IAssemblySymbol assembly = (IAssemblySymbol)reader.GetAssemblyOrModuleSymbol(reference)!;
+            AttributeData generatedAttribute = assembly.GetAttributes()
+                .Single(attribute => attribute.AttributeClass?.Name == "InferredThrowsAttribute2");
+            Assert.That(InferredThrowsMetadata.IsInferredThrows(generatedAttribute), Is.True);
+            Assert.That(readRecorded(reference), Has.Length.EqualTo(1));
+            assertCaller(
+                reference,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_AvoidsConflictingHelperAttribute.Source8"),
+                "System.InvalidOperationException");
+        }
+
+        [Test]
+        public void Generator_RecordsOnlyMembersAccessibleOutsidePrivateScopes()
+        {
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsOnlyMembersAccessibleOutsidePrivateScopes.Source9");
+            MetadataReference reference = emit(library, out _);
+
+            Assert.That(
+                readRecorded(reference).Select(record => record.MemberId),
+                Is.EquivalentTo(new[]
+                {
+                    "M:Resource.Public",
+                    "M:Resource.Protected",
+                    "M:Resource.Internal",
+                    "M:Resource.PublicNested.Visible",
+                }));
+
+            Diagnostic[] friendDiagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsOnlyMembersAccessibleOutsidePrivateScopes.Source10"),
+                additionalReferences: [reference],
+                assemblyName: "ExceptionableTests");
+            Assert.That(friendDiagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC003"));
+        }
+
+        [Test]
+        public void Generator_DoesNotRecordInternalMembersWithoutFriendAssemblies()
+        {
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_DoesNotRecordInternalMembersWithoutFriendAssemblies.Source11");
+
+            MetadataReference reference = emit(library, out _);
+
+            Assert.That(readRecorded(reference), Is.Empty);
+        }
+
+        [Test]
+        public void Generator_NullableGuardOnPublicApiIsNotRuntimeValidationForObliviousCallers()
+        {
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_NullableGuardOnPublicApiIsNotRuntimeValidationForObliviousCallers.Source12");
+            MetadataReference reference = emit(library, out _);
+            Assert.That(readRecorded(reference), Is.Empty);
+
+            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
+                ExceptionableAnalyzerTests.GetTestCase("Generator_NullableGuardOnPublicApiIsNotRuntimeValidationForObliviousCallers.Source13"),
+                additionalReferences: [reference]);
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
         public void Generator_ExplicitThrows_OverridesRecordedContract()
         {
-            const string library = """
-                using Exceptionable;
-                namespace Library;
-                public class Resource
-                {
-                    [Throws("System.IO.IOException")]
-                    public void Execute(bool fail)
-                    {
-                        if (fail)
-                        {
-                            throw new System.IO.IOException();
-                        }
-
-                        throw new System.InvalidOperationException();
-                    }
-                }
-                """;
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_ExplicitThrows_OverridesRecordedContract.Source14");
             MetadataReference reference = emit(library, out string? generated);
             Assert.That(generated, Is.Null);
             Assert.That(readRecorded(reference), Is.Empty);
 
             Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                """
-                class Caller
-                {
-                    void M(Library.Resource resource)
-                    {
-                        resource.Execute(false);
-                    }
-                }
-                """,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_ExplicitThrows_OverridesRecordedContract.Source15"),
                 additionalReferences: [reference]);
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
@@ -102,52 +160,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void Generator_RecordsMemberSpecificContracts_FromEmittedAssembly()
         {
-            const string library = """
-                #nullable enable
-                using Exceptionable;
-                namespace Library;
-                public class Resource
-                {
-                    public int field = 0 switch { _ => throw new System.IO.IOException() };
-
-                    public int Initialized { get; } = 0 switch { _ => throw new System.ObjectDisposedException("Initialized") };
-
-                    public int Value
-                    {
-                        get => throw new System.InvalidOperationException();
-                    }
-
-                    public void Execute()
-                    {
-                        throw new System.TimeoutException();
-                    }
-
-                    public void Caught()
-                    {
-                        try
-                        {
-                            throw new System.ArgumentException();
-                        }
-                        catch (System.ArgumentException)
-                        {
-                        }
-                    }
-
-                    [DoesNotThrow]
-                    public void Suppressed()
-                    {
-                        throw new System.NotSupportedException();
-                    }
-
-                    public Resource(string name)
-                    {
-                        if (name is null)
-                        {
-                            throw new System.ArgumentNullException(nameof(name));
-                        }
-                    }
-                }
-                """;
+            string library = ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source16");
             MetadataReference reference = emit(library, out _);
             Assert.That(
                 readRecorded(reference),
@@ -161,86 +174,32 @@ namespace Exceptionable.Analyzers.Tests
 
             assertCaller(
                 reference,
-                """
-                class Caller
-                {
-                    void M()
-                    {
-                        _ = new Library.Resource("a");
-                    }
-                }
-                """,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source17"),
                 "System.IO.IOException",
                 "System.ObjectDisposedException");
             assertCaller(
                 reference,
-                """
-                class Caller
-                {
-                    void M(Library.Resource resource)
-                    {
-                        _ = resource.Value;
-                    }
-                }
-                """,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source18"),
                 "System.InvalidOperationException");
             assertCaller(
                 reference,
-                """
-                class Caller
-                {
-                    void M(Library.Resource resource)
-                    {
-                        resource.Execute();
-                    }
-                }
-                """,
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source19"),
                 "System.TimeoutException");
             assertCaller(
                 reference,
-                """
-                class Caller
-                {
-                    void M(Library.Resource resource)
-                    {
-                        try
-                        {
-                            resource.Execute();
-                        }
-                        catch (System.TimeoutException)
-                        {
-                        }
-                    }
-                }
-                """);
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source20"));
             assertCaller(
                 reference,
-                """
-                using Exceptionable;
-                class Caller
-                {
-                    [Throws("System.TimeoutException")]
-                    void M(Library.Resource resource)
-                    {
-                        resource.Execute();
-                    }
-                }
-                """);
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source21"));
             assertCaller(
                 reference,
-                """
-                class Caller
-                {
-                    void M(Library.Resource resource)
-                    {
-                        resource.Caught();
-                        resource.Suppressed();
-                    }
-                }
-                """);
+                ExceptionableAnalyzerTests.GetTestCase("Generator_RecordsMemberSpecificContracts_FromEmittedAssembly.Source22"));
         }
 
-        private static void assertCaller(MetadataReference reference, string caller, params string[] exceptionNames)
+        private static void assertCaller(
+            MetadataReference reference,
+            string caller,
+            params string[] exceptionNames)
         {
             Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
                 caller,
@@ -267,12 +226,12 @@ namespace Exceptionable.Analyzers.Tests
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             IAssemblySymbol assembly = (IAssemblySymbol)compilation.GetAssemblyOrModuleSymbol(reference)!;
             return [.. assembly.GetAttributes()
-                .Where(attribute =>
-                    attribute.AttributeClass?.Name == "InferredThrowsAttribute" &&
-                    attribute.AttributeClass.ContainingNamespace.ToDisplayString() == "Exceptionable.Generation")
+                .Where(InferredThrowsMetadata.IsInferredThrows)
                 .Select(attribute => (
                     MemberId: (string)attribute.ConstructorArguments[0].Value!,
-                    ExceptionType: (string)attribute.ConstructorArguments[1].Value!))];
+                    ExceptionType: (string)attribute.ConstructorArguments[1].Value!))
+                .OrderBy(record => record.MemberId, StringComparer.Ordinal)
+                .ThenBy(record => record.ExceptionType, StringComparer.Ordinal)];
         }
 
         private static MetadataReference emit(string source, out string? generated)
