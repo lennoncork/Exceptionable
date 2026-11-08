@@ -21,10 +21,10 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
+      - name: Restore Cake
+        run: dotnet tool restore
       - name: Build, test, and package
-        uses: cake-build/cake-action@v3
-        with:
-          target: Validate
+        run: dotnet cake build.cake --target=Validate
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
@@ -39,8 +39,6 @@ jobs:
         with:
           user: lennoncork
       - name: Publish to NuGet.org
-        uses: cake-build/cake-action@v3
-        with:
-          target: Push
+        run: dotnet cake build.cake --target=Push
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}

@@ -34,7 +34,8 @@ number. Package versions omit `+` build metadata so NuGet keeps a distinct
 identity for each of those commits.
 
 ## Guidance
-- Prefer the `dotnet cake` `Build` target to mirror CI.
+- CI restores this local Cake tool with `dotnet tool restore`, then runs `dotnet cake build.cake --target=Validate`. Keep that invocation; resolving Cake as `latest` from the GitHub releases API is rate-limited on hosted runners.
+- Prefer the `dotnet cake` `Build` target for a local compile that matches the CI build step.
 - Run the `Analyzers` target to verify third-party analyzer diagnostics through `info` severity without applying fixes.
 - Use explicit Cake targets such as `Build` and `Push` rather than calling `dotnet build` directly, except for one-off debugging.
 - If package restore fails against internal feeds, add `https://api.nuget.org/v3/index.json` as a fallback source.
