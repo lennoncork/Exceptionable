@@ -256,5 +256,67 @@ interface IDerived : IFirst, ISecond
 
             Assert.That(contract.IsDoesNotThrow, Is.True);
         }
+
+        [Test]
+        public void GetEffectiveContract_AddsImplicitArgumentNullExceptionOnConstructor()
+        {
+            const string implicitSource = @"
+using System;
+namespace Exceptionable
+{
+    [AttributeUsage(AttributeTargets.Constructor, AllowMultiple = true)]
+    sealed class ThrowsAttribute : Attribute
+    {
+        public ThrowsAttribute(string name) { }
+    }
+    [AttributeUsage(AttributeTargets.Constructor)]
+    sealed class DoesNotThrowAttribute : Attribute { }
+}
+class Host
+{
+    public Host(string name) { }
+    [Exceptionable.DoesNotThrow]
+    public Host(int value) { }
+    [Exceptionable.Throws(""System.IO.IOException"")]
+    public Host(bool flag) { }
+    [Exceptionable.Throws(""System.Exception"")]
+    public Host(long value) { }
+    public void Run() { }
+}";
+            CSharpCompilation compilation = TestCompilation.Create(implicitSource);
+            Microsoft.CodeAnalysis.INamedTypeSymbol argumentNull =
+                compilation.GetTypeByMetadataName("System.ArgumentNullException")!;
+            ContractResolver resolver = new(
+                new ExceptionTypeResolver(compilation),
+                method => method.MethodKind == Microsoft.CodeAnalysis.MethodKind.Constructor
+                    ? [argumentNull]
+                    : []);
+            Microsoft.CodeAnalysis.INamedTypeSymbol host = compilation.GetTypeByMetadataName("Host")!;
+
+            ExceptionContract unmarked = resolver.GetEffectiveContract(constructor(host, "string"));
+            ExceptionContract doesNotThrow = resolver.GetEffectiveContract(constructor(host, "int"));
+            ExceptionContract ioException = resolver.GetEffectiveContract(constructor(host, "bool"));
+            ExceptionContract exception = resolver.GetEffectiveContract(constructor(host, "long"));
+            ExceptionContract method = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "Host", "Run"));
+
+            Assert.That(unmarked.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
+                Is.EqualTo(new[] { "System.ArgumentNullException" }));
+            Assert.That(doesNotThrow.IsDoesNotThrow, Is.True);
+            Assert.That(ioException.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
+                Is.EqualTo(new[] { "System.IO.IOException", "System.ArgumentNullException" }));
+            Assert.That(exception.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
+                Is.EqualTo(new[] { "System.Exception" }));
+            Assert.That(method.HasContract, Is.False);
+        }
+
+        private static Microsoft.CodeAnalysis.IMethodSymbol constructor(
+            Microsoft.CodeAnalysis.INamedTypeSymbol type,
+            string parameterType)
+        {
+            return type.Constructors.Single(candidate =>
+                candidate.Parameters.Length == 1 &&
+                candidate.Parameters[0].Type.ToDisplayString() == parameterType);
+        }
     }
 }

@@ -975,7 +975,7 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC006"));
         }
 
-        private static Diagnostic[] getDiagnostics(
+        internal static Diagnostic[] getDiagnostics(
             string source,
             string? projectSetting = "enable",
             string? fileSetting = "enable",
@@ -1015,7 +1015,7 @@ namespace Exceptionable.Analyzers.Tests
             return [.. diagnostics.Where(diagnostic => diagnostic.Severity != DiagnosticSeverity.Hidden)];
         }
 
-        private static string getTestCase(string testName)
+        internal static string getTestCase(string testName)
         {
             return File.ReadAllText(Path.Combine(
                 AppContext.BaseDirectory,

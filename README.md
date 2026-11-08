@@ -87,7 +87,10 @@ deconstruction. `throw null` is reported as `NullReferenceException`.
 `nameof`, local functions, and lambdas are not treated as throws of the
 enclosing method. Diagnostic messages use namespace-qualified exception
 names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
-call inside `[DoesNotThrow]`, are EXC003.
+call inside `[DoesNotThrow]`, are EXC003. A constructor that lets
+`ArgumentNullException` escape is treated as
+`[Throws(typeof(ArgumentNullException))]`. When nullable annotations make that
+throw redundant, EXC007 warns to remove it.
 
 Rule reference: [`docs/README.md`](./docs/README.md).
 

@@ -110,7 +110,12 @@ The compiler parses `#nullable` as its own syntax
 (`NullableDirectiveTrivia`) and stores the resulting context per source
 position. Analyzers can read the result with
 [`SemanticModel.GetNullableContext`](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.semanticmodel.getnullablecontext?view=roslyn-dotnet-4.7.0).
-There is no API to define another context of that kind.
+EXC007 reads the annotation flag at the constructor declaration. A
+non-nullable reference parameter is `NullableAnnotation.NotAnnotated`.
+`[AllowNull]`, documented with the other nullable analysis attributes linked
+above, still allows a caller to pass null, so that parameter keeps the
+implicit `ArgumentNullException` contract. There is no API to define another
+context of that kind.
 
 Roslyn's directive parser, at
 [`DirectiveParser.cs`](https://github.com/dotnet/roslyn/blob/6d158e8441092b11dcd98fe2b540f51e5ae24608/src/Compilers/CSharp/Portable/Parser/DirectiveParser.cs),

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -9,14 +10,18 @@ namespace Exceptionable.Analyzers.Contracts
     internal sealed class ContractResolver
     {
         private readonly ExceptionTypeResolver exceptionTypeResolver;
+        private readonly Func<IMethodSymbol, ImmutableArray<INamedTypeSymbol>>? implicitDeclaredTypes;
         private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> effectiveContracts =
             new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<IMethodSymbol, ImmutableArray<ExceptionContract>> implementedInterfaceContracts =
             new(SymbolEqualityComparer.Default);
 
-        internal ContractResolver(ExceptionTypeResolver exceptionTypeResolver)
+        internal ContractResolver(
+            ExceptionTypeResolver exceptionTypeResolver,
+            Func<IMethodSymbol, ImmutableArray<INamedTypeSymbol>>? implicitDeclaredTypes = null)
         {
             this.exceptionTypeResolver = exceptionTypeResolver;
+            this.implicitDeclaredTypes = implicitDeclaredTypes;
         }
 
         internal ExceptionContract GetEffectiveContract(IMethodSymbol method) =>
@@ -81,7 +86,43 @@ namespace Exceptionable.Analyzers.Contracts
         }
 
         private ExceptionContract resolveEffectiveContract(IMethodSymbol method) =>
-            this.resolveEffectiveContract(method, new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default));
+            this.includeImplicit(
+                method,
+                this.resolveEffectiveContract(method, new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
+
+        private ExceptionContract includeImplicit(IMethodSymbol method, ExceptionContract contract)
+        {
+            if (this.implicitDeclaredTypes is null || contract.IsDoesNotThrow)
+            {
+                return contract;
+            }
+
+            ImmutableArray<INamedTypeSymbol> implicitTypes = this.implicitDeclaredTypes(method);
+            if (implicitTypes.IsEmpty)
+            {
+                return contract;
+            }
+
+            if (!contract.HasContract)
+            {
+                return new ExceptionContract(false, implicitTypes);
+            }
+
+            ImmutableArray<INamedTypeSymbol>.Builder declared = contract.DeclaredTypes.ToBuilder();
+            foreach (INamedTypeSymbol implicitType in implicitTypes)
+            {
+                if (declared.Any(declaredType => implicitType.InheritsOrEquals(declaredType)))
+                {
+                    continue;
+                }
+
+                declared.Add(implicitType);
+            }
+
+            return declared.Count == contract.DeclaredTypes.Length
+                ? contract
+                : new ExceptionContract(false, declared.ToImmutable());
+        }
 
         private ExceptionContract resolveEffectiveContract(IMethodSymbol method, HashSet<IMethodSymbol> seen)
         {

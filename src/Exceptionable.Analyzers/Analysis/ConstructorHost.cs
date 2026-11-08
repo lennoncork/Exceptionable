@@ -41,6 +41,16 @@ namespace Exceptionable.Analyzers.Analysis
             return builder.ToImmutable();
         }
 
+        internal static bool RunsInitializers(IMethodSymbol constructor)
+        {
+            if (constructor.IsStatic)
+            {
+                return true;
+            }
+
+            return runsInstanceInitializers(constructor);
+        }
+
         private static bool runsInstanceInitializers(IMethodSymbol constructor)
         {
             if (isRecordCopyConstructor(constructor))

@@ -83,7 +83,8 @@ takes precedence.
 
 - Runtime checks, exception wrapping, or generated try/catch blocks.
 - Inferring a complete exception contract for arbitrary code, including
-  framework and third-party APIs.
+  framework and third-party APIs. The one explicit exception is an escaping
+  `ArgumentNullException` in a constructor, described in section 6.
 - Proving behavior across reflection, native calls, dynamic dispatch, or
   arbitrary control flow.
 - Modeling asynchronous, iterator, or interprocedural behavior beyond the
@@ -210,6 +211,42 @@ Treat a method's contract as one of:
 - **Unspecified:** legacy/default behavior; no new contract diagnostic is
   produced for that method.
 
+A `throw` does not add `[Throws]` to the method that contains it, and a call
+does not add `[Throws]` to its caller. An ordinary method that throws
+`ArgumentNullException` stays unspecified. The method that calls it stays
+unspecified as well, even when that call is diagnosed.
+
+Constructors are the one member that gains a contract from a throw. When one of a constructor's reachable throws lets
+`System.ArgumentNullException` escape, and the nullable-redundant case below
+does not apply, the constructor's effective contract includes
+`System.ArgumentNullException`, as if it were annotated
+`[Throws(typeof(ArgumentNullException))]`. An explicit `[Throws]` set gains
+that type unless a declared type already permits it. `[DoesNotThrow]` is not
+replaced; the throw remains EXC001. Any other escaping exception is then
+outside the contract and is EXC002. A caller that neither catches
+`ArgumentNullException` nor declares it gets EXC003. A constructor that only
+chains to that constructor is not given the contract; the `: this()` or
+`: base()` call is EXC003 instead. Caught throws, unreachable throws, and
+throws inside a local function or lambda do not count.
+`ArgumentNullException.ThrowIfNull` is an ordinary unannotated call and is not
+an implicit contract. The same rule applies to struct constructors and to a
+field or property initializer that runs as part of the constructor, including
+a primary-constructor initializer.
+
+When nullable annotations are enabled on the constructor and the escaping
+throw guards a non-nullable reference parameter, the throw is redundant.
+Callers are not expected to pass null for that parameter. The same conclusion
+applies when the throw names no parameter and every reference-type parameter
+is a non-nullable reference. EXC007 warns that the `ArgumentNullException`
+throw should be removed. That throw does not add an implicit `[Throws]`
+contract and is not also EXC002. It is still EXC001 when the constructor's
+contract is `[DoesNotThrow]`. A nullable parameter such as `string?`, or a
+parameter with `[AllowNull]`, keeps the implicit contract, because the caller
+is allowed to pass null. The nullable context is the annotation flag from
+`SemanticModel.GetNullableContext` at the constructor declaration. Nullable
+annotations are not a runtime null check; a project that wants the defensive
+guard can suppress EXC007.
+
 For a call with a known contract, an exception is handled if a reachable
 `catch` clause catches its type or a base type. A declared exception can also
 be propagated if the enclosing method's effective contract permits that
@@ -262,6 +299,8 @@ information from Roslyn. The initial implementation should recognize:
 
 - Explicit `throw` and `throw;` statements, including a null operand as
   `System.NullReferenceException`.
+- An escaping `ArgumentNullException` in a constructor. It is part of that
+  constructor's effective contract unless EXC007 reports it as redundant.
 - Calls, object creation, property getter/setter accesses, event add/remove
   accessors, user-defined operators, and user-defined conversions whose
   target has an effective `[Throws]` contract.
@@ -372,10 +411,12 @@ categories, default severities, and help links. The catalog is
 | EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, or event. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
+| EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled. Remove the throw; callers are not expected to pass null. | Warning |
 
 EXC001 and EXC002 report explicit throws. An annotated call is EXC003 even
-when the caller is `[DoesNotThrow]`. Messages name exception types with
-their namespace-qualified display names, so two exceptions that share a
+when the caller is `[DoesNotThrow]`. A nullable-redundant constructor
+`ArgumentNullException` is EXC007 and is not also EXC002. Messages name
+exception types with their namespace-qualified display names, so two exceptions that share a
 short name stay distinct. Diagnostics identify the relevant throw or call
 site. Avoid diagnostics for exception sources with no known contract.
 
@@ -504,6 +545,9 @@ phase 4 documentation:
 - Explicit throws (EXC001 and EXC002), annotated calls (EXC003), and
   unnecessary `try`/`catch` (EXC006), including constructors, accessors,
   initializers, pattern methods, and interface contracts.
+- An escaping `ArgumentNullException` in a constructor is an implicit
+  `[Throws(typeof(ArgumentNullException))]` contract. When nullable
+  annotations make that throw redundant, EXC007 warns to remove it.
 - Supported hosts are recorded in section 13.
 
 Still open:
@@ -546,7 +590,13 @@ Minimum acceptance criteria for the initial usable release:
   the project-level switch.
 - Per-rule severity settings can suppress or configure diagnostics when
   analysis is enabled, but do not enable analysis by themselves.
-- Unannotated call sites remain unaffected.
+- Unannotated call sites remain unaffected, except a constructor that lets
+  `ArgumentNullException` escape. That constructor is treated as
+  `[Throws(typeof(ArgumentNullException))]` unless EXC007 applies.
+- A nullable-aware constructor that throws `ArgumentNullException` for a
+  non-nullable reference parameter reports EXC007 and does not publish that
+  exception to callers. A nullable or `[AllowNull]` parameter keeps the
+  implicit contract.
 - The analyzer builds, loads in a consumer project, and runs without
   diagnostics caused by the analyzer itself.
 - Tests explicitly capture unsupported cases so future phases can expand
@@ -568,8 +618,14 @@ The initial implementation confirms these decisions:
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006 are enabled
-  warnings and EXC004-EXC005 are enabled errors.
+- Diagnostics use the `EXC` prefix. EXC001-EXC003, EXC006, and EXC007 are
+  enabled warnings and EXC004-EXC005 are enabled errors.
+- A throw does not add `[Throws]` to an ordinary method or to the method
+  that calls it. A constructor that lets `ArgumentNullException` escape is
+  the one member that gains that contract automatically. EXC007 uses the
+  constructor declaration's nullable annotation context. `[AllowNull]` and a
+  nullable reference parameter keep the implicit contract. `ThrowIfNull` is
+  not an implicit source.
 - EXC006 reports a `try`/`catch` whose reachable `try` body cannot throw a
   tracked exception because every call there has a `[DoesNotThrow]` contract
   and every other reachable operation is non-throwing. It is not reported for
