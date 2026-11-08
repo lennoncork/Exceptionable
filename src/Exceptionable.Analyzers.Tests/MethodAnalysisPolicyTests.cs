@@ -10,31 +10,17 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsSupportedMethod_ExcludesAsyncAndIteratorMethods()
         {
-            const string source = @"
-using System.Collections.Generic;
-using System.Threading.Tasks;
-class Base
-{
-    public virtual void SealedOverride() { }
-}
-class C : Base
-{
-    async Task AsyncMethod() { await Task.CompletedTask; }
-    IEnumerable<int> IteratorMethod() { yield return 1; }
-    void SynchronousMethod() { }
-    virtual void VirtualMethod() { }
-    void CallsLocalIterator()
-    {
-        System.Collections.Generic.IEnumerable<int> Local() { yield return 1; }
-    }
-    public sealed override void SealedOverride() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsSupportedMethod_ExcludesAsyncAndIteratorMethods.Source1");
             CSharpCompilation compilation = TestCompilation.Create(source);
 
             Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
                 TestCompilation.GetMethod(compilation, "C", "AsyncMethod")), Is.False);
             Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
+                TestCompilation.GetMethod(compilation, "C", "AsyncValueTask")), Is.False);
+            Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
                 TestCompilation.GetMethod(compilation, "C", "IteratorMethod")), Is.False);
+            Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
+                TestCompilation.GetMethod(compilation, "C", "AsyncIteratorMethod")), Is.False);
             Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
                 TestCompilation.GetMethod(compilation, "C", "SynchronousMethod")), Is.True);
             Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
@@ -48,18 +34,7 @@ class C : Base
         [Test]
         public void IsDeferredReturnType_RecognizesStandardDeferredTypesOnly()
         {
-            const string source = @"
-using System.Collections.Generic;
-using System.Threading.Tasks;
-class C
-{
-    Task Work() => Task.CompletedTask;
-    ValueTask WorkValue() => default;
-    IEnumerable<int> Items() => null;
-    IAsyncEnumerable<int> Stream() => null;
-    IAsyncEnumerator<int> Move() => null;
-    int Value() => 0;
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsDeferredReturnType_RecognizesStandardDeferredTypesOnly.Source2");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IMethodSymbol[] methods =
             [

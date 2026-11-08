@@ -11,18 +11,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void TryGetThrowsName_TrimsValidAttributeNames()
         {
-            const string source = @"
-using System;
-namespace Exceptionable
-{
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    sealed class ThrowsAttribute : Attribute
-    {
-        public ThrowsAttribute(string name) { }
-    }
-}
-[Exceptionable.Throws(""  System.IO.IOException  "")]
-class C { }";
+            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsName_TrimsValidAttributeNames.Source1");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -34,18 +23,7 @@ class C { }";
         [Test]
         public void TryGetThrowsName_RejectsWhitespaceOnlyValues()
         {
-            const string source = @"
-using System;
-namespace Exceptionable
-{
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-    sealed class ThrowsAttribute : Attribute
-    {
-        public ThrowsAttribute(string name) { }
-    }
-}
-[Exceptionable.Throws(""  "")]
-class C { }";
+            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsName_RejectsWhitespaceOnlyValues.Source2");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -56,15 +34,7 @@ class C { }";
         [Test]
         public void IsDoesNotThrow_RecognizesTheExceptionableAttribute()
         {
-            const string source = @"
-using System;
-namespace Exceptionable
-{
-    [AttributeUsage(AttributeTargets.Class)]
-    sealed class DoesNotThrowAttribute : Attribute { }
-}
-[Exceptionable.DoesNotThrow]
-class C { }";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsDoesNotThrow_RecognizesTheExceptionableAttribute.Source3");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -74,18 +44,7 @@ class C { }";
         [Test]
         public void TryGetThrowsType_ReadsTheExceptionTypeArgument()
         {
-            const string source = @"
-using System;
-namespace Exceptionable
-{
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-    sealed class ThrowsAttribute<T> : Attribute { }
-}
-class C
-{
-    [Exceptionable.Throws<System.IO.IOException>]
-    public void M() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsType_ReadsTheExceptionTypeArgument.Source4");
             CSharpCompilation compilation = TestCompilation.Create(source);
             AttributeData attribute = compilation.GetTypeByMetadataName("C")!
                 .GetMembers("M")
@@ -103,18 +62,7 @@ class C
         [Test]
         public void IsThrows_IgnoresAGenericAttributeInAnotherNamespace()
         {
-            const string source = @"
-using System;
-namespace Other
-{
-    [AttributeUsage(AttributeTargets.Method)]
-    sealed class ThrowsAttribute<T> : Attribute { }
-}
-class C
-{
-    [Other.Throws<System.IO.IOException>]
-    public void M() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsThrows_IgnoresAGenericAttributeInAnotherNamespace.Source5");
             CSharpCompilation compilation = TestCompilation.Create(source);
             AttributeData attribute = compilation.GetTypeByMetadataName("C")!
                 .GetMembers("M")
@@ -138,13 +86,7 @@ class C
         [Test]
         public void GenericThrowsAttribute_RejectsANonExceptionTypeArgument()
         {
-            const string source = @"
-using Exceptionable;
-class C
-{
-    [Throws<string>]
-    public void M() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("GenericThrowsAttribute_RejectsANonExceptionTypeArgument.Source6");
             MetadataReference[] references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(System.IO.Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path))

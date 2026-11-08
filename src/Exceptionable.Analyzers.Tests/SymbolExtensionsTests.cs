@@ -9,11 +9,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void InheritsOrEquals_RecognizesSameAndBaseExceptionTypes()
         {
-            const string source = @"
-using System;
-class CustomException : Exception { }
-class DerivedException : CustomException { }
-class OtherException : Exception { }";
+            string source = ExceptionableAnalyzerTests.GetTestCase("InheritsOrEquals_RecognizesSameAndBaseExceptionTypes.Source1");
             var compilation = TestCompilation.Create(source);
             var customException = compilation.GetTypeByMetadataName("CustomException")!;
             var derivedException = compilation.GetTypeByMetadataName("DerivedException")!;
@@ -27,11 +23,7 @@ class OtherException : Exception { }";
         [Test]
         public void IsSameMethod_RecognizesEquivalentMethodSymbols()
         {
-            const string source = @"
-class C
-{
-    void M() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsSameMethod_RecognizesEquivalentMethodSymbols.Source2");
             var compilation = TestCompilation.Create(source);
             var first = TestCompilation.GetMethod(compilation, "C", "M");
             var second = TestCompilation.GetMethod(compilation, "C", "M");
@@ -42,11 +34,7 @@ class C
         [Test]
         public void IsSameMethod_DistinguishesClosedGenericConstructions()
         {
-            const string source = @"
-class C<T>
-{
-    public void M() { }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsSameMethod_DistinguishesClosedGenericConstructions.Source3");
             var compilation = TestCompilation.Create(source);
             var definition = TestCompilation.GetMethod(compilation, "C`1", "M");
             var intMethod = compilation.GetTypeByMetadataName("C`1")!.Construct(

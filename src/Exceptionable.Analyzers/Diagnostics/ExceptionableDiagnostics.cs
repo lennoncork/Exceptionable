@@ -70,8 +70,8 @@ namespace Exceptionable.Analyzers.Diagnostics
 
         internal static readonly DiagnosticDescriptor RedundantArgumentNullException = new(
             "EXC007",
-            "Unnecessary ArgumentNullException",
-            "ArgumentNullException should be removed from '{0}' because the constructor is nullable-aware and callers are not expected to pass null",
+            "ArgumentNullException guard may be redundant with nullable annotations",
+            "ArgumentNullException guard in '{0}' may be redundant with its nullable parameter contract; nullable annotations do not enforce this at runtime",
             "Exceptionable",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true,

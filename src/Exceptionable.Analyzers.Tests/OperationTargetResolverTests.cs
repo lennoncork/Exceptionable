@@ -11,17 +11,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetTargetMethods_ResolvesGetterSetterAndCompoundAccessors()
         {
-            const string source = @"
-class C
-{
-    public int Value { get; set; }
-    void M(C instance)
-    {
-        var value = instance.Value;
-        instance.Value = value;
-        instance.Value += 1;
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("GetTargetMethods_ResolvesGetterSetterAndCompoundAccessors.Source1");
             var compilation = TestCompilation.Create(source);
             var syntaxTree = compilation.SyntaxTrees.Single();
             var semanticModel = compilation.GetSemanticModel(syntaxTree);

@@ -289,7 +289,10 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                INamedTypeSymbol? exceptionType = this.exceptionTypes.ResolveExceptionType(exceptionName);
+                INamedTypeSymbol? exceptionType = InferredThrowsMetadata.ResolveExceptionType(
+                    exceptionName,
+                    this.compilation,
+                    this.exceptionTypes);
                 if (exceptionType is null)
                 {
                     continue;

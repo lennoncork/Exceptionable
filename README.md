@@ -104,8 +104,10 @@ names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
 call inside `[DoesNotThrow]`, are EXC003. When a body later throws a different
 known exception, EXC002 reports the new throw and EXC008 reports the declared
 type that no longer escapes. When nullable annotations make a constructor's
-`ArgumentNullException` redundant, EXC007 warns to remove it and that throw
-is not inferred.
+`ArgumentNullException` guard potentially redundant, EXC007 reports that
+advisory and the throw is not inferred. Nullable annotations are not runtime
+validation; keep the guard when callers outside nullable analysis need runtime
+protection.
 
 Interface contracts are checked at interface-typed call sites, and source
 implementations are validated against all mapped interface contracts. The

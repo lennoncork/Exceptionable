@@ -11,16 +11,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsReachable_RecognizesReachableAndUnreachableThrowOperations()
         {
-            const string source = @"
-using System;
-class C
-{
-    void M()
-    {
-        throw new InvalidOperationException();
-        throw new ArgumentException();
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsReachable_RecognizesReachableAndUnreachableThrowOperations.Source1");
             var compilation = TestCompilation.Create(source);
             var throwOperations = compilation.SyntaxTrees.Single().GetRoot()
                 .DescendantNodes()
@@ -36,18 +27,7 @@ class C
         [Test]
         public void IsReachable_KeepsConstructorBodySeparateFromFieldInitializer()
         {
-            const string source = @"
-using System;
-class C
-{
-    int value = 1;
-
-    public C()
-    {
-        throw new InvalidOperationException();
-        throw new ArgumentException();
-    }
-}";
+            string source = ExceptionableAnalyzerTests.GetTestCase("IsReachable_KeepsConstructorBodySeparateFromFieldInitializer.Source2");
             var compilation = TestCompilation.Create(source);
             var syntaxRoot = compilation.SyntaxTrees.Single().GetRoot();
             var model = compilation.GetSemanticModel(syntaxRoot.SyntaxTree);

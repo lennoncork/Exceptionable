@@ -95,7 +95,7 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostic.Severity, Is.EqualTo(DiagnosticSeverity.Warning));
             Assert.That(
                 diagnostic.GetMessage(),
-                Is.EqualTo("ArgumentNullException should be removed from 'Resource constructor' because the constructor is nullable-aware and callers are not expected to pass null"));
+                Is.EqualTo("ArgumentNullException guard in 'Resource constructor' may be redundant with its nullable parameter contract; nullable annotations do not enforce this at runtime"));
             Assert.That(span(diagnostic), Does.Contain("ArgumentNullException"));
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));
