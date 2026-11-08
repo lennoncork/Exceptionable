@@ -111,11 +111,19 @@ This is a strong promise: an implementation must not let an exception escape.
 It does not mean that no exception can occur inside the method; a method may
 throw and handle an exception internally.
 
-### `[Throws("Exception")]`
+### `[Throws("Exception")]` and `[Throws<TException>]`
 
-Apply to a method or class to declare an exception type that may escape. The
-string is a type name, not an exception message. To keep the requested concise
-form usable while avoiding silent guessing, resolve names as follows:
+Apply either form to a method or class to declare an exception type that may
+escape. The string form's argument is a type name, not an exception message.
+`[Throws<TException>]` takes the exception type directly. `TException` must
+derive from `System.Exception`. The package attribute enforces that with a
+type constraint, and the analyzer applies the same inheritance check to every
+recognized generic `[Throws]`, including a source-defined attribute that omits
+the constraint. A type argument that does not derive from `System.Exception`
+is EXC004.
+
+To keep the string form usable while avoiding silent guessing, resolve names
+as follows:
 
 1. A fully qualified metadata name (for example,
    `"System.IO.IOException"`) resolves exactly. Nested types accept either
@@ -127,29 +135,39 @@ form usable while avoiding silent guessing, resolve names as follows:
    `"Exception"` shorthand resolves to `System.Exception`.
 3. An unresolved or ambiguous name is an attribute-usage diagnostic; it must
    not silently disable analysis.
+4. A name that identifies a type which does not derive from `System.Exception`
+   is the same attribute-usage diagnostic. The message says that the type does
+   not derive from `System.Exception`. A short name that also matches an
+   exception type still resolves to that exception type.
 
-The declared type covers derived exception types. Multiple `[Throws(...)]`
-attributes may be applied to declare multiple exception families.
-
-The design deliberately keeps the requested string syntax in the first
-contract version. It is less robust than a `Type`-based attribute argument;
-an implementation should isolate name resolution so a future version can
-consider a strongly typed form without changing analysis semantics.
+The declared type covers derived exception types, including an indirect
+subclass and a closed constructed generic exception type such as
+`MyException<int>`. Multiple `[Throws]` attributes may be applied to declare
+multiple exception families. String and generic attributes on the same target
+contribute to one declared set. An attribute type argument that is an open
+type parameter is rejected by the compiler and is not a contract.
 
 ### Attribute usage and precedence
 
-- Both attributes are valid on methods, constructors, classes, and structs,
-  and are inherited where C# attribute inheritance applies.
-- Accessor declarations may carry method-targeted attributes; analyzer call
-  checks include property get/set and event add/remove operations. Class-level
-  contracts apply to accessors, including compiler-generated accessors such as
-  auto-property getters and setters.
-- The analyzer recognizes the canonical `Exceptionable.DoesNotThrowAttribute`
-  and `Exceptionable.ThrowsAttribute` identities, whether supplied by the
-  package or defined in consumer source. A same-named attribute in another
-  namespace is unrelated.
+- The attributes are valid on methods, constructors, classes, structs,
+  properties (including indexers), and events, and are inherited where C#
+  attribute inheritance applies.
+- Accessor declarations may carry method-targeted attributes. A property or
+  event contract applies to its accessors unless an accessor declares its own
+  contract. Analyzer call checks include property get/set and event add/remove
+  operations. Class-level contracts apply to accessors, including
+  compiler-generated accessors such as auto-property getters and setters.
+- The analyzer recognizes the canonical `Exceptionable.DoesNotThrowAttribute`,
+  `Exceptionable.ThrowsAttribute`, and `Exceptionable.ThrowsAttribute<T>`
+  identities, whether supplied by the package or defined in consumer source.
+  A same-named attribute in another namespace is unrelated. The generic
+  identity is the open attribute type with one type argument.
 - A method-level `[Throws]` list overrides the class-level exception list for
   that method.
+- An accessor contract overrides a contract on its property or event, and a
+  property or event contract overrides a class or struct contract for that
+  member's accessors. Those are different declaration targets, so they are not
+  EXC005 conflicts.
 - A method-level `[DoesNotThrow]` overrides a class-level `[Throws]` list.
 - A method-level `[Throws]` overrides class-level `[DoesNotThrow]`.
 - A contract declared on a derived type replaces the base type contract. A
@@ -157,9 +175,12 @@ consider a strongly typed form without changing analysis semantics.
   replacement is a conflict with attributes that remain declared only on the
   base.
 - Applying both attributes at the same declaration is invalid and reported.
-- Constructors and property/event accessors are included. Operators and local
-  functions are out of scope initially. A `yield` in a nested local function
-  does not make the enclosing method an iterator.
+  That includes a property or event that carries both attributes.
+- Constructors, property and event accessors, user-defined operators, and
+  user-defined conversions are included. Local functions and lambdas remain
+  out of scope. A `yield` in a nested local function does not make the
+  enclosing method an iterator, and a throw or call inside a local function
+  or lambda is not treated as part of the enclosing method.
 
 Precedence must be implemented centrally and covered by tests, rather than
 being independently reinterpreted by each diagnostic. For a source
@@ -192,15 +213,18 @@ termination such as an infinite loop is outside the contract.
 
 A `try` with one or more `catch` clauses is unnecessary when every reachable
 operation in the `try` body is a non-throwing operation or a call, object
-creation, or accessor whose effective contract is `[DoesNotThrow]`, and at
-least one such `[DoesNotThrow]` operation is reachable. Non-throwing
-operations are literals, locals, parameters, `this`, discards, `nameof`,
-`typeof`, local assignments, and implicit or `as` conversions. EXC006 reports
-that case. A `finally` block does not keep the catch clauses necessary.
-Unannotated calls, `[Throws]` calls, explicit throws, nested `try` statements,
-uncertain virtual or abstract dispatch, and any other operation suppress
-EXC006, because the catch may still handle an exception the analyzer
-recognizes or cannot rule out. Lambdas and local functions are not treated as
+creation, accessor, or user-defined operator whose effective contract is
+`[DoesNotThrow]`, and at least one such `[DoesNotThrow]` operation is
+reachable. Non-throwing operations are literals, locals, parameters, `this`,
+the receiver of a null-conditional access, discards, `nameof`, `typeof`,
+local assignments, implicit or `as` conversions, `if` and `?:`, `?.`, `??`,
+`&&`, `||`, and `!` on built-in Boolean values. EXC006 reports that case. A
+`finally` block does not keep the catch clauses necessary. Unannotated calls,
+`[Throws]` calls, explicit throws, nested `try` statements, uncertain virtual
+or abstract dispatch, built-in arithmetic, loops, `foreach`, `using`, and any
+other operation suppress EXC006, because the catch may still handle an
+exception the analyzer recognizes or cannot rule out. `nameof` does not
+invoke the named member. Lambdas and local functions are not treated as
 invoked by the try body.
 
 These meanings apply to synchronous, non-iterator methods. `[Throws]` on an
@@ -226,9 +250,13 @@ unactionable diagnostics and makes annotations the opt-in boundary.
 Analyze synchronous method bodies, constructors, and accessors with semantic
 information from Roslyn. The initial implementation should recognize:
 
-- Explicit `throw` and `throw;` statements.
-- Calls, object creation, and property getter/setter accesses whose target
-  has an effective `[Throws]` contract, plus event add/remove accessors.
+- Explicit `throw` and `throw;` statements, including a null operand as
+  `System.NullReferenceException`.
+- Calls, object creation, property getter/setter accesses, event add/remove
+  accessors, user-defined operators, and user-defined conversions whose
+  target has an effective `[Throws]` contract.
+- Field and property initializers, synchronous `foreach` and `using` pattern
+  methods, and deconstruction assignments.
 - A `try`/`catch` whose reachable body only reaches `[DoesNotThrow]` calls
   and non-throwing operations (EXC006).
 - Catches with exact, base-type, or catch-all (`catch` without a type)
@@ -262,14 +290,30 @@ from a base class that does not itself implement the interface is not
 validated against a derived class's interface contract. Open virtual,
 abstract, and unsealed override calls stay unsupported because the runtime
 target can differ from the statically selected method. A sealed method, and a
-method declared on a sealed type, is analyzed as that method.
+method declared on a sealed type, is analyzed as that method. A `base` access
+is analyzed as the selected member.
 
 For `throw expression`, report the expression's static exception type before
-the implicit conversion to `System.Exception` required by C#. For `throw;`,
-use the enclosing catch type; a bare `catch` is treated as
+the implicit conversion to `System.Exception` required by C#. A thrown
+expression that is a compile-time null, including `throw null` and
+`throw default(ExceptionType)`, escapes as `System.NullReferenceException`.
+For `throw;`, use the enclosing catch type; a bare `catch` is treated as
 `System.Exception`. Catch-all clauses handle known exceptions when they
 enclose the operation in the `try` body, but do not handle a rethrow from
 their own handler.
+
+`base.` calls and member accesses are statically bound to the selected
+member, including when that member is virtual. Field and property
+initializers are checked against every constructor that executes them.
+Constructors that chain with `: this()`, and record copy constructors, do
+not execute those initializers. A `this()` or `base()` constructor call is
+still checked as a call. Synchronous `foreach` checks `GetEnumerator`,
+`MoveNext`, `Current`, `Dispose`, and a deconstruction of the element.
+Synchronous `using` checks `Dispose`, including an explicit interface
+implementation. Deconstruction assignment checks setters on target
+properties and the selected `Deconstruct` method. These pattern methods are
+immediate calls even when their return type is otherwise treated as
+deferred. `nameof` is not a call.
 
 ### Deferred analysis cases
 
@@ -287,7 +331,9 @@ in later phases for:
   dispatch remains unsupported because the runtime target may differ from
   the statically selected method.
 - Non-constant exception filters and complex rethrow/data-flow cases.
-- Generic exception types or exception type parameters, if introduced.
+- Open exception type parameters as thrown types or `[Throws<T>]` arguments.
+  A closed constructed type that derives from `System.Exception` is a valid
+  generic attribute argument.
 - External APIs with contracts distributed through reference assemblies.
 
 Until a case is supported, it must not produce misleading certainty. Async
@@ -308,7 +354,7 @@ package.
 | EXC001 | A known exception escapes a `[DoesNotThrow]` method or type. | Warning |
 | EXC002 | A known exception escapes a `[Throws]` method but is not in its declared set. | Warning |
 | EXC003 | A call to an annotated method may throw an exception that is neither caught nor permitted by the caller's contract. | Warning |
-| EXC004 | `[Throws]` names no exception type, or its name is ambiguous. | Error |
+| EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same target. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because its reachable body only calls `[DoesNotThrow]` members. | Warning |
 
@@ -484,8 +530,6 @@ in a consumer project.
 - Design and test async/await and iterator semantics before enabling rules
   for those constructs.
 - Consider override compatibility and metadata-based contracts.
-- Revisit the string-based API and consider a strongly typed alternative
-  while preserving existing annotations.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -539,7 +583,8 @@ The initial implementation confirms these decisions:
   a `try`/`finally` without a catch, or when the body contains a recognized
   exception source or an operation the analyzer cannot account for.
 - Class-level contracts apply to methods, constructors, and accessors,
-  including auto-property accessors.
+  including auto-property accessors. Property and event contracts apply to
+  their accessors unless an accessor declares its own.
 - Interface contracts apply at interface-typed call sites and, together with
   the implementation's own contract, at throws and calls inside a source
   implementation. External implementations and methods inherited from a
@@ -549,9 +594,23 @@ The initial implementation confirms these decisions:
   unsealed override call sites remain unsupported. Sealed methods and methods
   on sealed types are checked at the call.
 - A short exception name is an error when more than one exception type uses
-  it. Non-exception types are ignored. Attribute strings do not use
-  source-file `using` directives. Nested exception names accept dotted and
-  metadata forms.
+  it. EXC004 says that the name is ambiguous. An unresolved name uses the
+  invalid-type wording. A name or generic type argument that identifies a
+  type which does not derive from `System.Exception` says so. Non-exception
+  types are ignored when deciding ambiguity if an exception type matches.
+  Attribute strings do not use source-file `using` directives. A leading
+  `global::` is ignored. Nested exception names accept dotted and metadata
+  forms.
+- `[Throws<TException>]` declares the same contract as the string form.
+  `TException` must derive from `System.Exception`. String and generic
+  attributes on one target form one declared set.
+- Property and event contracts apply to their accessors unless an accessor
+  declares its own contract. User-defined operators and conversions are
+  checked at their bodies and call sites. `base` access is statically bound.
+  Field and property initializers are checked against the constructors that
+  run them. Synchronous `foreach` and `using` pattern methods, and
+  deconstruction, are calls. `throw null` is `NullReferenceException`.
+  `nameof`, local functions, and lambdas are not enclosing-method throws.
 - GitVersion derives package versions from Git history. Feature-branch and
   other non-release commits use ContinuousDelivery so the prerelease number
   changes with each commit. Package versions use that SemVer value and omit
@@ -565,4 +624,7 @@ only synchronous exceptions; it does not describe faults observed when awaiting
 tasks or enumerating iterators. Task-like and standard enumerable-returning
 calls are skipped to avoid reporting deferred exceptions as immediate ones.
 The same skip includes synchronous throws inside async and iterator methods.
+`foreach` still checks `GetEnumerator` because that call is immediate.
 Open virtual and unsealed override call sites also remain unsupported.
+`base` access is checked. Local functions and lambdas are not part of the
+enclosing method.

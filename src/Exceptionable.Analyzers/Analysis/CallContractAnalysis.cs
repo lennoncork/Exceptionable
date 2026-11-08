@@ -1,7 +1,11 @@
+using System.Collections.Generic;
+using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Exceptionable.Analyzers.Analysis
 {
@@ -11,42 +15,96 @@ namespace Exceptionable.Analyzers.Analysis
             OperationAnalysisContext operationContext,
             ExceptionableCompilationContext compilationContext)
         {
-            var operation = operationContext.Operation;
+            IOperation operation = operationContext.Operation;
             if (!compilationContext.Options.IsEnabled(operation.Syntax.SyntaxTree) ||
-                operationContext.ContainingSymbol is not IMethodSymbol callerMethod ||
-                !compilationContext.IsSupportedMethod(callerMethod) ||
-                !compilationContext.Reachability.IsReachable(operation, callerMethod))
+                OperationScope.IsIgnored(operation))
             {
                 return;
             }
 
-            var contractResolver = compilationContext.ContractResolver;
-            foreach (var targetMethod in OperationTargetResolver.GetTargetMethods(operation))
+            var targets = new List<(IMethodSymbol Method, bool AllowDeferredReturn)>();
+            foreach (IMethodSymbol target in OperationTargetResolver.GetTargetMethods(operation))
             {
-                if ((MethodAnalysisPolicy.IsDispatchUncertain(targetMethod) &&
-                        targetMethod.ContainingType.TypeKind != TypeKind.Interface) ||
-                    !compilationContext.IsSupportedMethod(targetMethod) ||
-                    MethodAnalysisPolicy.IsDeferredReturnType(targetMethod.ReturnType))
+                targets.Add((target, false));
+            }
+
+            foreach (IMethodSymbol target in OperationTargetResolver.GetPatternMethods(operation))
+            {
+                targets.Add((target, true));
+            }
+
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
+                .Where(compilationContext.IsSupportedMethod)
+                .Where(host => compilationContext.Reachability.IsReachable(operation, host))];
+            if (hosts.Length == 0)
+            {
+                return;
+            }
+
+            ContractResolver contractResolver = compilationContext.ContractResolver;
+            var reported = new HashSet<string>();
+            foreach ((IMethodSymbol? targetMethod, bool allowDeferredReturn) in targets)
+            {
+                if (!isAnalyzableTarget(targetMethod, operation, compilationContext, allowDeferredReturn))
                 {
                     continue;
                 }
 
-                var targetContract = contractResolver.GetEffectiveContract(targetMethod);
-                foreach (var declaredType in targetContract.DeclaredTypes)
+                ExceptionContract targetContract = contractResolver.GetEffectiveContract(targetMethod);
+                foreach (INamedTypeSymbol declaredType in targetContract.DeclaredTypes)
                 {
-                    if (contractResolver.IsExceptionPermitted(callerMethod, declaredType) ||
-                        ExceptionFlowAnalysis.IsCaught(operation, declaredType))
+                    if (hosts.All(host =>
+                            contractResolver.IsExceptionPermitted(host, declaredType) ||
+                            ExceptionFlowAnalysis.IsCaught(operation, declaredType)))
+                    {
+                        continue;
+                    }
+
+                    string key = targetMethod.GetContractDisplayName() + ":" + declaredType.Name;
+                    if (!reported.Add(key))
                     {
                         continue;
                     }
 
                     operationContext.ReportDiagnostic(Diagnostic.Create(
                         ExceptionableDiagnostics.CallerViolation,
-                        operation.Syntax.GetLocation(),
+                        getReportLocation(operation),
                         targetMethod.GetContractDisplayName(),
                         declaredType.Name));
                 }
             }
+        }
+
+        private static Location getReportLocation(IOperation operation)
+        {
+            return operation.Syntax switch
+            {
+                CommonForEachStatementSyntax forEach => forEach.ForEachKeyword.GetLocation(),
+                UsingStatementSyntax usingStatement => usingStatement.UsingKeyword.GetLocation(),
+                LocalDeclarationStatementSyntax local when local.UsingKeyword != default =>
+                    local.UsingKeyword.GetLocation(),
+                _ => operation.Syntax.GetLocation(),
+            };
+        }
+
+        private static bool isAnalyzableTarget(
+            IMethodSymbol target,
+            IOperation operation,
+            ExceptionableCompilationContext compilationContext,
+            bool allowDeferredReturn)
+        {
+            if (!MethodAnalysisPolicy.HasCertainDispatch(target, operation) ||
+                !compilationContext.IsSupportedMethod(target))
+            {
+                return false;
+            }
+
+            return allowDeferredReturn || !MethodAnalysisPolicy.IsDeferredReturnType(target.ReturnType);
         }
     }
 }

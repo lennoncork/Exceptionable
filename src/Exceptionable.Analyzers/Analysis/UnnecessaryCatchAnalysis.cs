@@ -28,12 +28,12 @@ namespace Exceptionable.Analyzers.Analysis
             }
 
             var inspector = new TryBodyInspector(compilationContext, callerMethod);
-            if (!inspector.TryGetDoesNotThrowTargets(tryOperation.Body, out var names))
+            if (!inspector.TryGetDoesNotThrowTargets(tryOperation.Body, out ImmutableArray<string> names))
             {
                 return;
             }
 
-            var location = tryOperation.Syntax is TryStatementSyntax trySyntax
+            Location location = tryOperation.Syntax is TryStatementSyntax trySyntax
                 ? trySyntax.TryKeyword.GetLocation()
                 : tryOperation.Syntax.GetLocation();
             operationContext.ReportDiagnostic(Diagnostic.Create(
@@ -60,8 +60,8 @@ namespace Exceptionable.Analyzers.Analysis
                 return $"'{names[0]}' has a [DoesNotThrow] contract";
             }
 
-            var quoted = names.Select(name => $"'{name}'").ToArray();
-            var list = quoted.Length == 2
+            string[] quoted = names.Select(name => $"'{name}'").ToArray();
+            string list = quoted.Length == 2
                 ? $"{quoted[0]} and {quoted[1]}"
                 : $"{string.Join(", ", quoted.Take(quoted.Length - 1))}, and {quoted[quoted.Length - 1]}";
             return $"{list} have [DoesNotThrow] contracts";
@@ -71,7 +71,7 @@ namespace Exceptionable.Analyzers.Analysis
         {
             private readonly ExceptionableCompilationContext compilationContext;
             private readonly IMethodSymbol method;
-            private readonly List<string> names = new();
+            private readonly List<string> names = [];
 
             internal TryBodyInspector(ExceptionableCompilationContext compilationContext, IMethodSymbol method)
             {
@@ -83,11 +83,11 @@ namespace Exceptionable.Analyzers.Analysis
             {
                 if (this.walk(body) == Step.Disqualified || this.names.Count == 0)
                 {
-                    targets = ImmutableArray<string>.Empty;
+                    targets = [];
                     return false;
                 }
 
-                targets = this.names.ToImmutableArray();
+                targets = [.. this.names];
                 return true;
             }
 
@@ -98,53 +98,56 @@ namespace Exceptionable.Analyzers.Analysis
                     return Step.Ok;
                 }
 
-                switch (operation)
+                return operation switch
                 {
-                    case IAnonymousFunctionOperation:
-                    case ILocalFunctionOperation:
-                        return Step.Ok;
-                    case IThrowOperation:
-                        return Step.Disqualified;
-                    case IInvocationOperation:
-                    case IObjectCreationOperation:
-                    case IPropertyReferenceOperation:
-                    case IEventAssignmentOperation:
-                        return this.walkCall(operation);
-                    case IConversionOperation conversion when !isNonThrowingConversion(conversion):
-                        return Step.Disqualified;
-                    case IBlockOperation:
-                    case IExpressionStatementOperation:
-                    case IReturnOperation:
-                    case IArgumentOperation:
-                    case IOmittedArgumentOperation:
-                    case IVariableDeclarationGroupOperation:
-                    case IVariableDeclarationOperation:
-                    case IVariableDeclaratorOperation:
-                    case IVariableInitializerOperation:
-                    case ISimpleAssignmentOperation:
-                    case IObjectOrCollectionInitializerOperation:
-                    case IEventReferenceOperation:
-                    case IMethodReferenceOperation:
-                    case IInstanceReferenceOperation:
-                    case ILocalReferenceOperation:
-                    case IParameterReferenceOperation:
-                    case ILiteralOperation:
-                    case IDefaultValueOperation:
-                    case IDiscardOperation:
-                    case INameOfOperation:
-                    case ITypeOfOperation:
-                    case IEmptyOperation:
-                    case IConversionOperation:
-                        return this.walkChildren(operation);
-                    default:
-                        return Step.Disqualified;
+                    IAnonymousFunctionOperation or ILocalFunctionOperation or INameOfOperation => Step.Ok,
+                    IThrowOperation => Step.Disqualified,
+                    IInvocationOperation or IObjectCreationOperation or IPropertyReferenceOperation or IEventAssignmentOperation => this.walkCall(operation),
+                    IBinaryOperation binary => this.walkBinary(binary),
+                    IUnaryOperation unary => this.walkUnary(unary),
+                    IIncrementOrDecrementOperation increment when increment.OperatorMethod is not null => this.walkCall(increment),
+                    IConversionOperation conversion when conversion.OperatorMethod is not null => this.walkCall(conversion),
+                    IConversionOperation conversion when !isNonThrowingConversion(conversion) => Step.Disqualified,
+                    IConditionalOperation or ICoalesceOperation or IConditionalAccessOperation => this.walkChildren(operation),
+                    IBlockOperation or IExpressionStatementOperation or IReturnOperation or IArgumentOperation or IOmittedArgumentOperation or IVariableDeclarationGroupOperation or IVariableDeclarationOperation or IVariableDeclaratorOperation or IVariableInitializerOperation or ISimpleAssignmentOperation or IObjectOrCollectionInitializerOperation or IEventReferenceOperation or IMethodReferenceOperation or IConditionalAccessInstanceOperation or IInstanceReferenceOperation or ILocalReferenceOperation or IParameterReferenceOperation or ILiteralOperation or IDefaultValueOperation or IDiscardOperation or ITypeOfOperation or IEmptyOperation or IConversionOperation => this.walkChildren(operation),
+                    _ => Step.Disqualified,
+                };
+            }
+
+            private Step walkBinary(IBinaryOperation binary)
+            {
+                if (binary.OperatorMethod is not null)
+                {
+                    return this.walkCall(binary);
                 }
+
+                if (binary.OperatorKind is BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr)
+                {
+                    return this.walkChildren(binary);
+                }
+
+                return Step.Disqualified;
+            }
+
+            private Step walkUnary(IUnaryOperation unary)
+            {
+                if (unary.OperatorMethod is not null)
+                {
+                    return this.walkCall(unary);
+                }
+
+                if (unary.OperatorKind == UnaryOperatorKind.Not)
+                {
+                    return this.walkChildren(unary);
+                }
+
+                return Step.Disqualified;
             }
 
             private Step walkCall(IOperation operation)
             {
-                var targets = OperationTargetResolver.GetTargetMethods(operation).ToArray();
-                if (targets.Length == 0 || targets.Any(target => !this.isProvenDoesNotThrow(target)))
+                IMethodSymbol[] targets = [.. OperationTargetResolver.GetTargetMethods(operation)];
+                if (targets.Length == 0 || targets.Any(target => !this.isProvenDoesNotThrow(target, operation)))
                 {
                     return Step.Disqualified;
                 }
@@ -154,9 +157,9 @@ namespace Exceptionable.Analyzers.Analysis
                     return Step.Disqualified;
                 }
 
-                foreach (var target in targets)
+                foreach (IMethodSymbol? target in targets)
                 {
-                    var displayName = target.GetContractDisplayName();
+                    string displayName = target.GetContractDisplayName();
                     if (!this.names.Contains(displayName))
                     {
                         this.names.Add(displayName);
@@ -168,7 +171,7 @@ namespace Exceptionable.Analyzers.Analysis
 
             private Step walkChildren(IOperation operation)
             {
-                foreach (var child in operation.ChildOperations)
+                foreach (IOperation child in operation.ChildOperations)
                 {
                     if (this.walk(child) == Step.Disqualified)
                     {
@@ -179,12 +182,11 @@ namespace Exceptionable.Analyzers.Analysis
                 return Step.Ok;
             }
 
-            private bool isProvenDoesNotThrow(IMethodSymbol target)
+            private bool isProvenDoesNotThrow(IMethodSymbol target, IOperation operation)
             {
                 if (!this.compilationContext.IsSupportedMethod(target) ||
                     MethodAnalysisPolicy.IsDeferredReturnType(target.ReturnType) ||
-                    (MethodAnalysisPolicy.IsDispatchUncertain(target) &&
-                        target.ContainingType.TypeKind != TypeKind.Interface))
+                    !MethodAnalysisPolicy.HasCertainDispatch(target, operation))
                 {
                     return false;
                 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.CodeAnalysis.Operations;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Exceptionable.Analyzers.Analysis
 {
@@ -13,32 +14,49 @@ namespace Exceptionable.Analyzers.Analysis
 
         internal bool IsReachable(IOperation operation, IMethodSymbol method)
         {
+            if (!tryGetControlFlowRoot(operation, out IOperation? root))
+            {
+                return true;
+            }
+
             return this.methodReachability
-                .GetOrAdd(method, _ => createMethodReachability(operation))
+                .GetOrAdd(method, _ => createMethodReachability(root))
                 .IsReachable(operation);
         }
 
-        private static MethodReachability createMethodReachability(IOperation operation)
+        private static bool tryGetControlFlowRoot(IOperation operation, out IOperation root)
         {
-            for (var current = operation; current is not null; current = current.Parent)
+            for (IOperation? current = operation; current is not null; current = current.Parent)
             {
-                var controlFlowGraph = current switch
+                if (current is IMethodBodyOperation or IConstructorBodyOperation ||
+                    (current is IBlockOperation block && block.Parent is null))
                 {
-                    IMethodBodyOperation methodBody => ControlFlowGraph.Create(methodBody),
-                    IConstructorBodyOperation constructorBody => ControlFlowGraph.Create(constructorBody),
-                    IBlockOperation blockBody when blockBody.Parent is null => ControlFlowGraph.Create(blockBody),
-                    _ => null
-                };
-
-                if (controlFlowGraph is null)
-                {
-                    continue;
+                    root = current;
+                    return true;
                 }
+            }
+
+            root = operation;
+            return false;
+        }
+
+        private static MethodReachability createMethodReachability(IOperation root)
+        {
+            ControlFlowGraph? controlFlowGraph = root switch
+            {
+                IMethodBodyOperation methodBody => ControlFlowGraph.Create(methodBody),
+                IConstructorBodyOperation constructorBody => ControlFlowGraph.Create(constructorBody),
+                IBlockOperation blockBody when blockBody.Parent is null => ControlFlowGraph.Create(blockBody),
+                _ => null,
+            };
+
+            if (controlFlowGraph is not null)
+            {
 
                 var reachability = new Dictionary<(SyntaxTree Tree, Microsoft.CodeAnalysis.Text.TextSpan Span), bool>();
-                foreach (var block in controlFlowGraph.Blocks)
+                foreach (BasicBlock block in controlFlowGraph.Blocks)
                 {
-                    foreach (var blockOperation in block.Operations)
+                    foreach (IOperation blockOperation in block.Operations)
                     {
                         addReachability(blockOperation, block.IsReachable, reachability);
                     }
@@ -60,15 +78,15 @@ namespace Exceptionable.Analyzers.Analysis
             bool isBlockReachable,
             IDictionary<(SyntaxTree Tree, Microsoft.CodeAnalysis.Text.TextSpan Span), bool> reachability)
         {
-            for (var syntax = operation.Syntax; syntax is not null; syntax = syntax.Parent)
+            for (SyntaxNode? syntax = operation.Syntax; syntax is not null; syntax = syntax.Parent)
             {
-                var key = (syntax.SyntaxTree, syntax.Span);
-                reachability[key] = reachability.TryGetValue(key, out var existing)
+                (SyntaxTree SyntaxTree, TextSpan Span) key = (syntax.SyntaxTree, syntax.Span);
+                reachability[key] = reachability.TryGetValue(key, out bool existing)
                     ? existing || isBlockReachable
                     : isBlockReachable;
             }
 
-            foreach (var child in operation.ChildOperations)
+            foreach (IOperation child in operation.ChildOperations)
             {
                 addReachability(child, isBlockReachable, reachability);
             }
@@ -95,15 +113,13 @@ namespace Exceptionable.Analyzers.Analysis
 
             internal bool IsReachable(IOperation operation)
             {
-                var key = (operation.Syntax.SyntaxTree, operation.Syntax.Span);
+                (SyntaxTree SyntaxTree, TextSpan Span) key = (operation.Syntax.SyntaxTree, operation.Syntax.Span);
                 if (!this.isAvailable)
                 {
                     return true;
                 }
 
-                return this.operationReachability.TryGetValue(key, out var isReachable)
-                    ? isReachable
-                    : true;
+                return !this.operationReachability.TryGetValue(key, out bool isReachable) || isReachable;
             }
         }
     }

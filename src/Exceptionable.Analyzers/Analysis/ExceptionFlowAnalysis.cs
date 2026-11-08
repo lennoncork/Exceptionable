@@ -10,7 +10,7 @@ namespace Exceptionable.Analyzers.Analysis
     {
         internal static bool IsCaught(IOperation operation, ITypeSymbol exceptionType)
         {
-            for (var current = operation.Parent; current is not null; current = current.Parent)
+            for (IOperation? current = operation.Parent; current is not null; current = current.Parent)
             {
                 if (current is not ITryOperation tryOperation ||
                     tryOperation.Catches.Any(catchClause => isDescendantOf(operation, catchClause.Handler)) ||
@@ -19,7 +19,7 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                foreach (var catchClause in tryOperation.Catches)
+                foreach (ICatchClauseOperation catchClause in tryOperation.Catches)
                 {
                     if (!isFilterDefinitelyTrue(catchClause.Filter) ||
                         (catchClause.ExceptionType is not null &&
@@ -39,7 +39,7 @@ namespace Exceptionable.Analyzers.Analysis
             IThrowOperation throwOperation,
             Compilation compilation)
         {
-            for (var current = throwOperation.Parent; current is not null; current = current.Parent)
+            for (IOperation? current = throwOperation.Parent; current is not null; current = current.Parent)
             {
                 if (current is ICatchClauseOperation catchClause &&
                     isDescendantOf(throwOperation, catchClause.Handler))
@@ -54,7 +54,7 @@ namespace Exceptionable.Analyzers.Analysis
                 }
             }
 
-            var catchClauseSyntax = throwOperation.Syntax.AncestorsAndSelf()
+            CatchClauseSyntax? catchClauseSyntax = throwOperation.Syntax.AncestorsAndSelf()
                 .OfType<CatchClauseSyntax>()
                 .FirstOrDefault();
             if (catchClauseSyntax is null ||
@@ -68,19 +68,34 @@ namespace Exceptionable.Analyzers.Analysis
                 : null;
         }
 
-        internal static ITypeSymbol? GetThrownExceptionType(IOperation exception)
+        internal static ITypeSymbol? GetThrownExceptionType(IOperation exception, Compilation compilation)
         {
+            if (isNullConstant(exception))
+            {
+                return compilation.GetTypeByMetadataName("System.NullReferenceException");
+            }
+
             while (exception is IConversionOperation conversion && conversion.IsImplicit)
             {
                 exception = conversion.Operand;
+                if (isNullConstant(exception))
+                {
+                    return compilation.GetTypeByMetadataName("System.NullReferenceException");
+                }
             }
 
             return exception.Type;
         }
 
+        private static bool isNullConstant(IOperation operation)
+        {
+            Optional<object?> constantValue = operation.ConstantValue;
+            return constantValue.HasValue && constantValue.Value is null;
+        }
+
         private static bool isDescendantOf(IOperation operation, IOperation ancestor)
         {
-            for (var current = operation; current is not null; current = current.Parent)
+            for (IOperation? current = operation; current is not null; current = current.Parent)
             {
                 if (ReferenceEquals(current, ancestor))
                 {
@@ -98,7 +113,7 @@ namespace Exceptionable.Analyzers.Analysis
                 return true;
             }
 
-            var constantValue = filter.ConstantValue;
+            Optional<object?> constantValue = filter.ConstantValue;
             return constantValue.HasValue && constantValue.Value is true;
         }
     }

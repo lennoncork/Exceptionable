@@ -35,7 +35,7 @@ namespace Exceptionable.Analyzers.Diagnostics
         internal static readonly DiagnosticDescriptor ThrowsUsage = new(
             "EXC004",
             "Invalid Throws attribute name",
-            "The type name '{0}' in [Throws] is not a valid exception type in this compilation",
+            "The type name '{0}' in [Throws] {1}",
             "Exceptionable",
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,

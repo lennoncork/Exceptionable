@@ -9,7 +9,7 @@ namespace Exceptionable.Analyzers.Contracts
     {
         private readonly Compilation compilation;
         private readonly INamedTypeSymbol? exceptionBaseType;
-        private readonly ConcurrentDictionary<string, ResolvedType> cache =
+        private readonly ConcurrentDictionary<string, ExceptionTypeResolution> cache =
             new(StringComparer.Ordinal);
 
         internal ExceptionTypeResolver(Compilation compilation)
@@ -18,72 +18,112 @@ namespace Exceptionable.Analyzers.Contracts
             this.exceptionBaseType = compilation.GetTypeByMetadataName("System.Exception");
         }
 
-        internal INamedTypeSymbol? ResolveExceptionType(string value)
+        internal INamedTypeSymbol? ResolveExceptionType(string value) =>
+            this.Resolve(value).Type;
+
+        internal ExceptionTypeResolution Resolve(string value)
         {
-            var trimmed = value.Trim();
-            return this.cache.GetOrAdd(trimmed, this.resolveUncached).Type;
+            string trimmed = value.Trim();
+            if (trimmed.StartsWith("global::", StringComparison.Ordinal))
+            {
+                trimmed = trimmed.Substring("global::".Length);
+            }
+
+            return this.cache.GetOrAdd(trimmed, this.resolveUncached);
         }
 
-        private ResolvedType resolveUncached(string trimmed)
+        private ExceptionTypeResolution resolveUncached(string trimmed)
         {
             if (string.Equals(trimmed, "Exception", StringComparison.Ordinal))
             {
-                return new ResolvedType(this.exceptionBaseType);
+                return new ExceptionTypeResolution(this.exceptionBaseType, isAmbiguous: false);
             }
 
-            var resolved = trimmed.IndexOf('.') >= 0 || trimmed.IndexOf('+') >= 0
+            return trimmed.IndexOf('.') >= 0 || trimmed.IndexOf('+') >= 0
                 ? this.resolveMetadataName(trimmed)
                 : this.resolveShortName(trimmed);
-            return new ResolvedType(resolved);
         }
 
-        private INamedTypeSymbol? resolveMetadataName(string name)
+        private ExceptionTypeResolution resolveMetadataName(string name)
         {
-            var exact = this.compilation.GetTypeByMetadataName(name);
+            INamedTypeSymbol? exact = this.compilation.GetTypeByMetadataName(name);
             if (exact is not null)
             {
-                return this.isException(exact) ? exact : null;
+                return this.IsExceptionType(exact)
+                    ? new ExceptionTypeResolution(exact, isAmbiguous: false)
+                    : ExceptionTypeResolution.NotAnException;
             }
 
             if (name.IndexOf('+') >= 0 || name.IndexOf('.') < 0)
             {
-                return null;
+                return ExceptionTypeResolution.NotFound;
             }
 
             INamedTypeSymbol? match = null;
-            var parts = name.Split('.');
-            for (var namespaceLength = parts.Length - 1; namespaceLength >= 1; namespaceLength--)
+            bool sawNonException = false;
+            string[] parts = name.Split('.');
+            for (int namespaceLength = parts.Length - 1; namespaceLength >= 1; namespaceLength--)
             {
-                var candidate = string.Join(".", parts, 0, namespaceLength) + "+" +
+                string candidate = string.Join(".", parts, 0, namespaceLength) + "+" +
                     string.Join("+", parts, namespaceLength, parts.Length - namespaceLength);
-                var resolved = this.compilation.GetTypeByMetadataName(candidate);
-                if (resolved is null || !this.isException(resolved))
+                INamedTypeSymbol? resolved = this.compilation.GetTypeByMetadataName(candidate);
+                if (resolved is null)
                 {
+                    continue;
+                }
+
+                if (!this.IsExceptionType(resolved))
+                {
+                    sawNonException = true;
                     continue;
                 }
 
                 if (match is not null && !SymbolEqualityComparer.Default.Equals(match, resolved))
                 {
-                    return null;
+                    return ExceptionTypeResolution.Ambiguous;
                 }
 
                 match = resolved;
             }
 
-            return match;
+            if (match is not null)
+            {
+                return new ExceptionTypeResolution(match, isAmbiguous: false);
+            }
+
+            return sawNonException
+                ? ExceptionTypeResolution.NotAnException
+                : ExceptionTypeResolution.NotFound;
         }
 
-        private INamedTypeSymbol? resolveShortName(string name)
+        private ExceptionTypeResolution resolveShortName(string name)
         {
             INamedTypeSymbol? match = null;
-            return this.tryFind(this.compilation.GlobalNamespace, name, ref match) ? match : null;
+            bool sawNonException = false;
+            if (!this.tryFind(this.compilation.GlobalNamespace, name, ref match, ref sawNonException))
+            {
+                return ExceptionTypeResolution.Ambiguous;
+            }
+
+            if (match is not null)
+            {
+                return new ExceptionTypeResolution(match, isAmbiguous: false);
+            }
+
+            return sawNonException
+                ? ExceptionTypeResolution.NotAnException
+                : ExceptionTypeResolution.NotFound;
         }
 
-        private bool tryFind(INamespaceSymbol namespaceSymbol, string name, ref INamedTypeSymbol? match)
+        private bool tryFind(
+            INamespaceSymbol namespaceSymbol,
+            string name,
+            ref INamedTypeSymbol? match,
+            ref bool sawNonException)
         {
             foreach (INamedTypeSymbol type in namespaceSymbol.GetTypeMembers())
             {
-                if (!this.tryFind(type, name, ref match))
+                if (!this.tryFind(type, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -91,7 +131,7 @@ namespace Exceptionable.Analyzers.Contracts
 
             foreach (INamespaceSymbol nestedNamespace in namespaceSymbol.GetNamespaceMembers())
             {
-                if (!this.tryFind(nestedNamespace, name, ref match))
+                if (!this.tryFind(nestedNamespace, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -100,21 +140,32 @@ namespace Exceptionable.Analyzers.Contracts
             return true;
         }
 
-        private bool tryFind(INamedTypeSymbol type, string name, ref INamedTypeSymbol? match)
+        private bool tryFind(
+            INamedTypeSymbol type,
+            string name,
+            ref INamedTypeSymbol? match,
+            ref bool sawNonException)
         {
-            if (string.Equals(type.Name, name, StringComparison.Ordinal) && this.isException(type))
+            if (string.Equals(type.Name, name, StringComparison.Ordinal))
             {
-                if (match is not null)
+                if (this.IsExceptionType(type))
                 {
-                    return false;
-                }
+                    if (match is not null)
+                    {
+                        return false;
+                    }
 
-                match = type;
+                    match = type;
+                }
+                else
+                {
+                    sawNonException = true;
+                }
             }
 
             foreach (INamedTypeSymbol nestedType in type.GetTypeMembers())
             {
-                if (!this.tryFind(nestedType, name, ref match))
+                if (!this.tryFind(nestedType, name, ref match, ref sawNonException))
                 {
                     return false;
                 }
@@ -123,17 +174,32 @@ namespace Exceptionable.Analyzers.Contracts
             return true;
         }
 
-        private bool isException(INamedTypeSymbol type) =>
-            this.exceptionBaseType is not null && type.InheritsOrEquals(this.exceptionBaseType);
+        internal bool IsExceptionType(ITypeSymbol type) =>
+            type is INamedTypeSymbol named &&
+            named.TypeKind != TypeKind.Error &&
+            this.exceptionBaseType is not null &&
+            named.InheritsOrEquals(this.exceptionBaseType);
+    }
 
-        private sealed class ResolvedType
+    internal readonly struct ExceptionTypeResolution
+    {
+        internal static ExceptionTypeResolution NotFound { get; } = new(null, isAmbiguous: false);
+
+        internal static ExceptionTypeResolution Ambiguous { get; } = new(null, isAmbiguous: true);
+
+        internal static ExceptionTypeResolution NotAnException { get; } = new(null, isAmbiguous: false, isNotAnException: true);
+
+        internal ExceptionTypeResolution(INamedTypeSymbol? type, bool isAmbiguous, bool isNotAnException = false)
         {
-            internal ResolvedType(INamedTypeSymbol? type)
-            {
-                this.Type = type;
-            }
-
-            internal INamedTypeSymbol? Type { get; }
+            this.Type = type;
+            this.IsAmbiguous = isAmbiguous;
+            this.IsNotAnException = isNotAnException;
         }
+
+        internal INamedTypeSymbol? Type { get; }
+
+        internal bool IsAmbiguous { get; }
+
+        internal bool IsNotAnException { get; }
     }
 }
