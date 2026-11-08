@@ -1,0 +1,11 @@
+workflow: GitFlow/v1
+branches:
+  main:
+    label: beta
+  feature:
+    regex: ^feat(ure)?[/-](?<BranchName>.+)
+    mode: ContinuousDelivery
+    label: "feat-{BranchName}"
+  unknown:
+    mode: ContinuousDelivery
+    label: "{BranchName}"

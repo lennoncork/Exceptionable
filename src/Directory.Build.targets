@@ -1,0 +1,16 @@
+<Project>
+
+    <ItemGroup>
+        <None
+            Include="$(MSBuildThisFileFullPath)"
+            Link="Properties\$(MSBuildThisFile)" />
+    </ItemGroup>
+
+    <Target Name="UseNuGetSemVerWithoutBuildMetadata" AfterTargets="GetVersion">
+        <PropertyGroup Condition=" '$(GitVersion_SemVer)' != '' ">
+            <Version>$(GitVersion_SemVer)</Version>
+            <PackageVersion>$(GitVersion_SemVer)</PackageVersion>
+        </PropertyGroup>
+    </Target>
+
+</Project>

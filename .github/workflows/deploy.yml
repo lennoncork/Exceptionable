@@ -1,0 +1,44 @@
+name: deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  push:
+    runs-on: windows-latest
+    environment: nuget.org
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          clean: true
+          fetch-depth: 0
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore Cake
+        run: dotnet tool restore
+      - name: Build, test, and package
+        run: dotnet cake build.cake --target=Validate
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ github.event.release.tag_name }}
+          path: .packages/*.nupkg
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: NuGet login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: lennoncork
+      - name: Publish to NuGet.org
+        run: dotnet cake build.cake --target=Push
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
