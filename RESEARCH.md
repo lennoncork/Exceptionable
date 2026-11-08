@@ -61,7 +61,9 @@ document the project-level configuration surface.
   precisely, including how it affects callers and implementations.
 - Make analysis opt-in/configurable at project level and support standard
   per-diagnostic severity configuration, analogous to nullable enablement and
-  warning configuration.
+  warning configuration. Per-file control is `.editorconfig`. The nullable
+  analogy does not include a source directive; see
+  [source directives](#source-directives-and-nullable).
 - Validate annotations and test the resulting flow behavior with paired
   positive and negative consumer examples.
 - Prefer compiler-visible metadata so contracts can be consumed across
@@ -83,6 +85,118 @@ whereas C# has no checked-exception system. Exceptionable must define its own
 known-exception sources, propagation rules, catch coverage, and conservative
 unknown behavior. Nullable attributes are a model for annotation-driven API
 contracts and configuration—not a ready-made exception-flow algorithm.
+
+## Source directives and `#nullable`
+
+A `#exceptionable` directive that behaves like `#nullable` is not available to
+this analyzer. `#nullable` is a C# language directive. Exceptionable can keep
+the project-and-editorconfig enablement model. It cannot add a directive the
+compiler will accept, and it cannot track a nullable-style context from one
+line to the next.
+
+### What `#nullable` controls
+
+`#nullable enable`, `#nullable disable`, and `#nullable restore` set the
+nullable annotation and warning contexts from that line until the next
+`#nullable` directive or the end of the file. `restore` returns the selected
+flags to the project `<Nullable>` setting. Each directive may apply to both
+flags or only `annotations` or `warnings`. The
+[preprocessor reference](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/preprocessor-directives#nullable-context)
+and the
+[nullable reference types specification](https://github.com/dotnet/csharplang/blob/29df547564c4ffc51b1dedf8369dc91e8f0ba854/proposals/csharp-8.0/nullable-reference-types-specification.md)
+define that behavior, in the nullable compiler directives section.
+
+The compiler parses `#nullable` as its own syntax
+(`NullableDirectiveTrivia`) and stores the resulting context per source
+position. Analyzers can read the result with
+[`SemanticModel.GetNullableContext`](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.semanticmodel.getnullablecontext?view=roslyn-dotnet-4.7.0).
+There is no API to define another context of that kind.
+
+Roslyn's directive parser, at
+[`DirectiveParser.cs`](https://github.com/dotnet/roslyn/blob/6d158e8441092b11dcd98fe2b540f51e5ae24608/src/Compilers/CSharp/Portable/Parser/DirectiveParser.cs),
+handles only the directives the language knows: `#if`, `#elif`, `#else`,
+`#endif`, `#region`, `#endregion`, `#define`, `#undef`, `#error`, `#warning`,
+`#line`, `#pragma`, script `#r` and `#load`, `#nullable`, `#!`, and `#:`.
+`#nullable` is the `NullableKeyword` case and calls `ParseNullableDirective`.
+Any other word after `#` becomes `BadDirectiveTrivia` with CS1024
+(`ERR_PPDirectiveExpected`). The
+[preprocessor error catalog](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/preprocessor-errors)
+uses `#import` as the example of that error.
+
+The C# standard's
+[pre-processing directives](https://github.com/dotnet/csharpstandard/blob/f885375267570784d8d529d94893555494781abb/standard/lexical-structure.md#65-pre-processing-directives)
+name a closed set: conditional compilation, line, diagnostic, region, pragma,
+and nullable. `#nullable` is
+[§6.5.9](https://github.com/dotnet/csharpstandard/blob/f885375267570784d8d529d94893555494781abb/standard/lexical-structure.md#659-nullable-directive).
+`#exceptionable` is not in that grammar. Roslyn's extra script and file-based
+forms (`#r`, `#load`, `#!`, `#:`) are still fixed cases in the same parser.
+An analyzer does not register a case.
+
+### Forms that do not add the directive
+
+- `#exceptionable enable` is CS1024. The parser reports it before analyzers
+  run, including when the line sits in disabled `#if` text, because disabled
+  text is still scanned for directives.
+- `#pragma exceptionable disable` is warning CS1633 (`WRN_IllegalPragma`).
+  The standard's
+  [pragma section](https://github.com/dotnet/csharpstandard/blob/f885375267570784d8d529d94893555494781abb/standard/lexical-structure.md#6510-pragma-directives)
+  leaves pragma text to the compiler and says an unrecognized pragma may warn
+  but must not be a compile-time error. It also says a pragma must not change
+  program semantics. Roslyn does not hand that text to analyzers. Its
+  [pragma documentation](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/preprocessor-directives#pragmas)
+  says the compiler must already support the pragma. The parser's recovery
+  builds a warning-pragma node, which is not a stable custom-pragma syntax.
+- `#:exceptionable enable` uses the ignored-directive prefix from the C# 14
+  [ignored directives](https://github.com/dotnet/csharplang/blob/93d55a09e48c7f36f312bffe2e5b83e8d18031b1/proposals/csharp-14.0/ignored-directives.md)
+  speclet. The language ignores `#:` so file-based-app tooling can read a
+  header. The same speclet requires the directive before the first token and
+  before any `#if`, and it says Roslyn errors when the file is part of a
+  project. That error is CS9298. It also says unrecognized directives should
+  still be rejected so official .NET tooling can reserve them. The user-facing
+  preprocessor page describes project-based `#:` use more loosely as a
+  warning; the error code and `ParseIgnoredDirective` are the behavior for
+  Exceptionable's project compilations. A header-only token in a file-based
+  app is not a `#nullable` region.
+- `#define` and `#undef` must appear before the first token (CS1032) and only
+  introduce conditional-compilation symbols. They do not carry an
+  enable/disable state through later lines.
+
+Adding a real directive would be a C# language and Roslyn compiler change.
+The ignored-directive speclet says new directive spellings belong with the
+language design team. An analyzer package cannot ship that change.
+
+### Per-file enablement that already exists
+
+[DESIGN.md](./DESIGN.md) section 9 is the configuration contract:
+`<Exceptionable>` for the project, and `exceptionable_analysis = enable` or
+`disable` in `.editorconfig` for a file or directory. A recognized editor
+value overrides the project property in either direction. That is the
+file-scoped part of what `#nullable` does relative to `<Nullable>`. It does
+not select a span inside one file.
+
+`AnalysisOptions.IsEnabled` reads those settings per syntax tree, and the
+diagnostic paths consult it before reporting. Attributes are still metadata.
+A disabled file's `[Throws]` or `[DoesNotThrow]` remains visible to an enabled
+caller. `#nullable disable annotations` is different: it changes how
+annotations in that region are interpreted. Exceptionable has no separate
+annotation context, because its annotations are ordinary attributes.
+
+### In-source suppression is not an enable switch
+
+`#pragma warning disable EXC001` and `#pragma warning restore EXC001` suppress
+listed analyzer diagnostics across a span. That is the supported in-source
+mechanism, and unknown ids are accepted by `#pragma warning`. It does not
+enable analysis for a file whose `<Exceptionable>` and `exceptionable_analysis`
+settings leave analysis off. DESIGN requires that per-diagnostic suppression
+not turn the master switch on. A pragma must name each id; a later rule is
+not covered until the pragma lists it.
+
+A comment convention such as `// exceptionable: disable` could be scanned from
+trivia and could imitate regions and `restore`. It would be an Exceptionable
+comment rule, not a preprocessor directive: the compiler would not check it,
+and it would be easy to confuse with a commented-out line. Do not treat that
+convention as `#nullable` behavior unless DESIGN adds it as its own
+configuration rule.
 
 ## Cross-repository practices
 

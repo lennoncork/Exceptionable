@@ -48,6 +48,9 @@ exceptionable_analysis = enable
 exceptionable_analysis = disable
 ```
 
+C# has no `#exceptionable` directive. That spelling is a compiler error.
+Per-file control is `exceptionable_analysis`.
+
 Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings and
 does not enable analysis by itself.
 
