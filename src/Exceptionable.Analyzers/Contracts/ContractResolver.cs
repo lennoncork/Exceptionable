@@ -92,36 +92,16 @@ namespace Exceptionable.Analyzers.Contracts
 
         private ExceptionContract includeImplicit(IMethodSymbol method, ExceptionContract contract)
         {
-            if (this.implicitDeclaredTypes is null || contract.IsDoesNotThrow)
+            // An explicit [Throws] or [DoesNotThrow] contract replaces inferred throws.
+            if (this.implicitDeclaredTypes is null || contract.HasContract)
             {
                 return contract;
             }
 
             ImmutableArray<INamedTypeSymbol> implicitTypes = this.implicitDeclaredTypes(method);
-            if (implicitTypes.IsEmpty)
-            {
-                return contract;
-            }
-
-            if (!contract.HasContract)
-            {
-                return new ExceptionContract(false, implicitTypes);
-            }
-
-            ImmutableArray<INamedTypeSymbol>.Builder declared = contract.DeclaredTypes.ToBuilder();
-            foreach (INamedTypeSymbol implicitType in implicitTypes)
-            {
-                if (declared.Any(declaredType => implicitType.InheritsOrEquals(declaredType)))
-                {
-                    continue;
-                }
-
-                declared.Add(implicitType);
-            }
-
-            return declared.Count == contract.DeclaredTypes.Length
+            return implicitTypes.IsEmpty
                 ? contract
-                : new ExceptionContract(false, declared.ToImmutable());
+                : new ExceptionContract(false, implicitTypes);
         }
 
         private ExceptionContract resolveEffectiveContract(IMethodSymbol method, HashSet<IMethodSymbol> seen)

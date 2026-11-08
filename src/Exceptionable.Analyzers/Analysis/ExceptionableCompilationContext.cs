@@ -19,10 +19,10 @@ namespace Exceptionable.Analyzers.Analysis
             this.Options = new AnalysisOptions(optionsProvider);
             this.ExceptionTypeResolver = new ExceptionTypeResolver(compilation);
             this.Reachability = new ReachabilityAnalysis();
-            this.ArgumentNullConstructors = new ArgumentNullConstructorAnalysis(compilation, this.Reachability);
+            this.InferredThrows = new InferredThrowAnalysis(compilation, this.Reachability);
             this.ContractResolver = new ContractResolver(
                 this.ExceptionTypeResolver,
-                this.ArgumentNullConstructors.GetImplicitDeclaredTypes);
+                this.InferredThrows.GetImplicitDeclaredTypes);
         }
 
         internal bool IsSupportedMethod(IMethodSymbol method) =>
@@ -38,6 +38,6 @@ namespace Exceptionable.Analyzers.Analysis
 
         internal ReachabilityAnalysis Reachability { get; }
 
-        internal ArgumentNullConstructorAnalysis ArgumentNullConstructors { get; }
+        internal InferredThrowAnalysis InferredThrows { get; }
     }
 }

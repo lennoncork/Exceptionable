@@ -975,19 +975,45 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC006"));
         }
 
-        internal static Diagnostic[] getDiagnostics(
+        internal static Diagnostic[] GetDiagnostics(
             string source,
             string? projectSetting = "enable",
             string? fileSetting = "enable",
-            bool includeExceptionableAttributes = true)
+            bool includeExceptionableAttributes = true,
+            IEnumerable<MetadataReference>? additionalReferences = null)
         {
-            List<PortableExecutableReference> references = [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            return getDiagnostics(
+                source,
+                projectSetting,
+                fileSetting,
+                includeExceptionableAttributes,
+                additionalReferences);
+        }
+
+        internal static string GetTestCase(string testName)
+        {
+            return getTestCase(testName);
+        }
+
+        private static Diagnostic[] getDiagnostics(
+            string source,
+            string? projectSetting = "enable",
+            string? fileSetting = "enable",
+            bool includeExceptionableAttributes = true,
+            IEnumerable<MetadataReference>? additionalReferences = null)
+        {
+            List<MetadataReference> references = [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path))];
 
             if (includeExceptionableAttributes)
             {
                 references.Add(MetadataReference.CreateFromFile(typeof(DoesNotThrowAttribute).Assembly.Location));
+            }
+
+            if (additionalReferences is not null)
+            {
+                references.AddRange(additionalReferences);
             }
 
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, TestCompilation.ParseOptions);
@@ -1015,7 +1041,7 @@ namespace Exceptionable.Analyzers.Tests
             return [.. diagnostics.Where(diagnostic => diagnostic.Severity != DiagnosticSeverity.Hidden)];
         }
 
-        internal static string getTestCase(string testName)
+        private static string getTestCase(string testName)
         {
             return File.ReadAllText(Path.Combine(
                 AppContext.BaseDirectory,

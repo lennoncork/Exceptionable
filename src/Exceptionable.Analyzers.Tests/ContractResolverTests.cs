@@ -258,7 +258,7 @@ interface IDerived : IFirst, ISecond
         }
 
         [Test]
-        public void GetEffectiveContract_AddsImplicitArgumentNullExceptionOnConstructor()
+        public void GetEffectiveContract_ExplicitContractReplacesInferredThrows()
         {
             const string implicitSource = @"
 using System;
@@ -304,7 +304,7 @@ class Host
                 Is.EqualTo(new[] { "System.ArgumentNullException" }));
             Assert.That(doesNotThrow.IsDoesNotThrow, Is.True);
             Assert.That(ioException.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
-                Is.EqualTo(new[] { "System.IO.IOException", "System.ArgumentNullException" }));
+                Is.EqualTo(new[] { "System.IO.IOException" }));
             Assert.That(exception.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
                 Is.EqualTo(new[] { "System.Exception" }));
             Assert.That(method.HasContract, Is.False);

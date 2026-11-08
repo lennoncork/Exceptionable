@@ -1,5 +1,5 @@
-// Tests a constructor that declares another exception and also throws ArgumentNullException.
-// Expected behavior: report EXC003 for both exceptions and do not report EXC002.
+// Tests an explicit [Throws] contract on a constructor that also throws ArgumentNullException.
+// Expected behavior: the explicit attribute replaces inference. Report EXC002 for ArgumentNullException and EXC003 for IOException.
 using System;
 using System.IO;
 using Exceptionable;

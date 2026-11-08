@@ -87,10 +87,14 @@ deconstruction. `throw null` is reported as `NullReferenceException`.
 `nameof`, local functions, and lambdas are not treated as throws of the
 enclosing method. Diagnostic messages use namespace-qualified exception
 names. Explicit throws are EXC001 or EXC002. Annotated calls, including a
-call inside `[DoesNotThrow]`, are EXC003. A constructor that lets
-`ArgumentNullException` escape is treated as
-`[Throws(typeof(ArgumentNullException))]`. When nullable annotations make that
-throw redundant, EXC007 warns to remove it.
+call inside `[DoesNotThrow]`, are EXC003. A reachable uncaught throw is an
+inferred `[Throws]` contract for that member. An explicit `[Throws]` or
+`[DoesNotThrow]` replaces the inference. The analyzer package includes a
+source generator that writes each inferred contract into the compiled
+assembly. A consuming project that references that assembly and enables
+analysis reports EXC003 from the recorded contract, without the library's
+source. When nullable annotations make a constructor `ArgumentNullException`
+redundant, EXC007 warns to remove it and that throw is not inferred.
 
 Rule reference: [`docs/README.md`](./docs/README.md).
 

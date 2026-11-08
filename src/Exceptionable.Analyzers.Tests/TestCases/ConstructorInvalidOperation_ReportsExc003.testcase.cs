@@ -1,5 +1,5 @@
-// Tests a constructor that throws an exception other than ArgumentNullException.
-// Expected behavior: do not infer a [Throws] contract.
+// Tests a constructor that throws InvalidOperationException and has no explicit attribute.
+// Expected behavior: infer that exception and report EXC003 at the caller.
 using System;
 class Resource
 {

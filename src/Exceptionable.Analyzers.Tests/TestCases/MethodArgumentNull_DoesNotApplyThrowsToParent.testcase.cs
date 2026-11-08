@@ -1,5 +1,6 @@
-// Tests an ordinary method that throws ArgumentNullException and the method that calls it.
-// Expected behavior: do not apply [Throws] to either method.
+// Tests an ordinary method that throws ArgumentNullException.
+// Expected behavior: infer [Throws] on Child and report EXC003 at Parent.
+// Grandparent calls Parent, which has no throw of its own, so it stays unspecified.
 using System;
 class Caller
 {
@@ -11,5 +12,10 @@ class Caller
     public void Parent()
     {
         this.Child();
+    }
+
+    public void Grandparent()
+    {
+        this.Parent();
     }
 }

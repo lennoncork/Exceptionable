@@ -1,5 +1,5 @@
-// Tests a constructor whose only implicit contract is ArgumentNullException.
-// Expected behavior: report EXC002 for the other escaping exception and EXC003 for ArgumentNullException.
+// Tests a constructor with two escaping throws and no explicit attribute.
+// Expected behavior: infer both exception types and report EXC003 for each. Do not report EXC002.
 using System;
 class Resource
 {

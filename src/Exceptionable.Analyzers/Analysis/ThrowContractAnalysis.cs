@@ -46,7 +46,7 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            bool redundantArgumentNull = compilationContext.ArgumentNullConstructors
+            bool redundantArgumentNull = compilationContext.InferredThrows
                 .IsRedundantNullableGuard(throwOperation, hosts);
             if (redundantArgumentNull)
             {
