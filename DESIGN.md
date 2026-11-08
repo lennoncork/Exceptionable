@@ -363,6 +363,23 @@ dotnet_diagnostic.EXC003.severity = none
 Disabling Exceptionable analysis suppresses all Exceptionable diagnostics for
 the affected compilation or file, regardless of per-rule severity settings.
 Per-rule settings do not turn analysis on when the master switch is disabled.
+Disabling a file does not remove `[Throws]` or `[DoesNotThrow]` metadata.
+Callers in an enabled file are still checked against a contract declared in a
+disabled file.
+
+There is no `#exceptionable` preprocessor directive. `#nullable` changes the
+nullable context from one line to the next because the C# compiler parses that
+directive and records the context per source position. The directive grammar
+is closed, and an analyzer cannot register a new directive or a similar
+per-position context. `#exceptionable` is compiler error CS1024. `#pragma
+exceptionable` is warning CS1633; Roslyn does not give analyzers a custom
+pragma. `#:exceptionable` is the file-based-app form: it is rejected in
+project compilations (CS9298) and cannot appear after the first token, so it
+cannot select a region of a file. Per-file enablement remains
+`exceptionable_analysis`. `#pragma warning disable` with specific `EXC` ids
+can suppress diagnostics inside a span after analysis is enabled; it cannot
+turn analysis on. The parser behavior and links are in
+[RESEARCH.md](./RESEARCH.md).
 
 ## 10. Suggested architecture
 
@@ -511,6 +528,9 @@ The initial implementation confirms these decisions:
 
 - The attributes target .NET 10 and .NET Framework 4.8.1; the analyzer targets
   .NET Standard 2.0 and uses Roslyn 4.14.
+- Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
+  directive. The compiler rejects that syntax, and an analyzer cannot add one.
+  See section 9.
 - Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006 are enabled
   warnings and EXC004-EXC005 are enabled errors.
 - EXC006 reports a `try`/`catch` whose reachable `try` body cannot throw a
