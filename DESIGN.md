@@ -190,6 +190,19 @@ that consume them are permitted. An explicit `throw` that cannot be shown to
 be caught is a violation. Returning normally is not required: non-exceptional
 termination such as an infinite loop is outside the contract.
 
+A `try` with one or more `catch` clauses is unnecessary when every reachable
+operation in the `try` body is a non-throwing operation or a call, object
+creation, or accessor whose effective contract is `[DoesNotThrow]`, and at
+least one such `[DoesNotThrow]` operation is reachable. Non-throwing
+operations are literals, locals, parameters, `this`, discards, `nameof`,
+`typeof`, local assignments, and implicit or `as` conversions. EXC006 reports
+that case. A `finally` block does not keep the catch clauses necessary.
+Unannotated calls, `[Throws]` calls, explicit throws, nested `try` statements,
+uncertain virtual or abstract dispatch, and any other operation suppress
+EXC006, because the catch may still handle an exception the analyzer
+recognizes or cannot rule out. Lambdas and local functions are not treated as
+invoked by the try body.
+
 These meanings apply to synchronous, non-iterator methods. `[Throws]` on an
 `async` method does not currently describe exceptions observed when awaiting
 its returned task, and a contract on an iterator does not describe exceptions
@@ -216,6 +229,8 @@ information from Roslyn. The initial implementation should recognize:
 - Explicit `throw` and `throw;` statements.
 - Calls, object creation, and property getter/setter accesses whose target
   has an effective `[Throws]` contract, plus event add/remove accessors.
+- A `try`/`catch` whose reachable body only reaches `[DoesNotThrow]` calls
+  and non-throwing operations (EXC006).
 - Catches with exact, base-type, or catch-all (`catch` without a type)
   coverage.
 - Propagation permitted by the enclosing method's effective declared set.
@@ -295,6 +310,7 @@ package.
 | EXC003 | A call to an annotated method may throw an exception that is neither caught nor permitted by the caller's contract. | Warning |
 | EXC004 | `[Throws]` names no exception type, or its name is ambiguous. | Error |
 | EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same target. | Error |
+| EXC006 | A `try`/`catch` is unnecessary because its reachable body only calls `[DoesNotThrow]` members. | Warning |
 
 Diagnostics should identify the relevant throw or call site. Where useful,
 include the exception type and the contract that was violated. Avoid
@@ -380,8 +396,9 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 `ContractResolver` is the only place that applies method, type, override, and
 interface precedence. Resolved names and effective contracts are cached for
 the compilation.
-`Analysis/` contains separate declaration, throw, and call handlers, plus
-exception-flow, operation-target, method-policy, and reachability components.
+`Analysis/` contains separate declaration, throw, call, and unnecessary-catch
+handlers, plus exception-flow, operation-target, method-policy, and
+reachability components.
 `Diagnostics/` owns the descriptors. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
@@ -429,6 +446,8 @@ in a consumer project.
 
 - Check calls to annotated methods against caller catches and declared
   contracts (EXC003).
+- Report EXC006 when a `try`/`catch` encloses only reachable `[DoesNotThrow]`
+  calls.
 - Cover constructors, accessors, class-level contracts, and precedence.
 - Honor contracts at interface-typed call sites and validate source interface
   implementations against all mapped interface contracts.
@@ -467,6 +486,10 @@ Minimum acceptance criteria for the initial usable release:
   caller with a compatible contract.
 - A `[DoesNotThrow]` implementation that lets a known exception escape is
   diagnosed, while one that catches it is accepted.
+- A single `try`/`catch` around a call whose effective contract is
+  `[DoesNotThrow]` reports EXC006. The same shape around a `[Throws]` call,
+  an unannotated call, an open virtual call, or a `[DoesNotThrow]` call beside
+  a reachable throw does not.
 - Conflicting or unresolved annotations produce clear attribute diagnostics.
 - The two NuGet packages can be built and consumed independently for their
   documented purposes.
@@ -488,8 +511,13 @@ The initial implementation confirms these decisions:
 
 - The attributes target .NET 10 and .NET Framework 4.8.1; the analyzer targets
   .NET Standard 2.0 and uses Roslyn 4.14.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003 are enabled warnings and
-  EXC004-EXC005 are enabled errors.
+- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006 are enabled
+  warnings and EXC004-EXC005 are enabled errors.
+- EXC006 reports a `try`/`catch` whose reachable `try` body cannot throw a
+  tracked exception because every call there has a `[DoesNotThrow]` contract
+  and every other reachable operation is non-throwing. It is not reported for
+  a `try`/`finally` without a catch, or when the body contains a recognized
+  exception source or an operation the analyzer cannot account for.
 - Class-level contracts apply to methods, constructors, and accessors,
   including auto-property accessors.
 - Interface contracts apply at interface-typed call sites and, together with

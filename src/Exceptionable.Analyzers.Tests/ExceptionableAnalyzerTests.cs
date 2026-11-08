@@ -20,6 +20,82 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void DoesNotThrowCallInSingleTryCatch_ReportsExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DoesNotThrowCallInSingleTryCatch_ReportsExc006)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC006");
+            Assert.That(diagnostic.Severity, Is.EqualTo(DiagnosticSeverity.Warning));
+            Assert.That(
+                diagnostic.GetMessage(),
+                Is.EqualTo("Try/catch is unnecessary because 'Safe' has a [DoesNotThrow] contract"));
+            Assert.That(
+                diagnostic.Location.SourceTree!.GetText().GetSubText(diagnostic.Location.SourceSpan).ToString(),
+                Is.EqualTo("try"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC001"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void ClassDoesNotThrowCallInSingleTryCatch_ReportsExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ClassDoesNotThrowCallInSingleTryCatch_ReportsExc006)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC006");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'Safe' has a [DoesNotThrow] contract"));
+        }
+
+        [Test]
+        public void InterfaceDoesNotThrowCallInSingleTryCatch_ReportsExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(InterfaceDoesNotThrowCallInSingleTryCatch_ReportsExc006)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC006");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("'Execute' has a [DoesNotThrow] contract"));
+        }
+
+        [Test]
+        public void ThrowsCallInSingleTryCatch_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowsCallInSingleTryCatch_DoesNotReportExc006)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC006"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
+        }
+
+        [Test]
+        public void UnannotatedCallInSingleTryCatch_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(UnannotatedCallInSingleTryCatch_DoesNotReportExc006)));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void DoesNotThrowCallBesideThrow_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DoesNotThrowCallBesideThrow_DoesNotReportExc006)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC006"));
+        }
+
+        [Test]
+        public void VirtualDoesNotThrowCallInSingleTryCatch_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(VirtualDoesNotThrowCallInSingleTryCatch_DoesNotReportExc006)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC006"));
+        }
+
+        [Test]
+        public void DoesNotThrowCallInTryFinally_DoesNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DoesNotThrowCallInTryFinally_DoesNotReportExc006)));
+
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC006"));
+        }
+
+        [Test]
         public void ThrowsMethod_ReportsExc002_WhenTypeEscapes()
         {
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(ThrowsMethod_ReportsExc002_WhenTypeEscapes)));
