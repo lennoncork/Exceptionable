@@ -343,18 +343,35 @@ Organize the analyzer package into these logical parts:
 3. **Exception-flow analysis** — identifies known exception sources,
    propagates them through supported control flow, and determines whether
    catches or the enclosing contract handle them.
-4. **Diagnostics** — declares rules, reports locations and arguments, and
-   exposes standard Roslyn configuration and code-fix integration points,
-   including the Exceptionable master switch and per-rule severity.
+4. **Diagnostics** — declares rules and reports locations and arguments;
+   analysis enablement and per-rule severity follow standard Roslyn
+   configuration.
 5. **Tests** — analyzer tests for valid and invalid code, attribute lookup,
    inheritance, and documented limitations.
 
-Use compilation-start actions to resolve framework symbols once per
-compilation, and register only the syntax/symbol actions needed for supported
-constructs. Do not retain symbols across compilations. Keep name resolution
-and contract precedence separate from control-flow traversal. Package the
-analyzer in the conventional NuGet analyzer assets location and verify both
-packages in a consumer project.
+The implementation keeps `ExceptionableAnalyzer` as the Roslyn registration
+entry point. A compilation-start action creates an `ExceptionableCompilationContext`
+that owns the compilation, `AnalysisOptions`, `ExceptionTypeResolver`,
+`ContractResolver`, and `ReachabilityAnalysis`. These objects and any symbols
+they reference are scoped to that compilation; none are stored in static
+state.
+
+The `Contracts/` area contains the normalized `ExceptionContract`,
+`ContractResolver`, `ExceptionTypeResolver`, and attribute/symbol helpers.
+`Analysis/` contains separate declaration, throw, and call handlers, plus
+exception-flow, operation-target, method-policy, and reachability components.
+`Diagnostics/` owns the descriptors. Keep rule handlers focused on one
+diagnostic path and share semantic helpers rather than duplicating contract
+resolution or operation traversal.
+
+Test contract resolution, exception-name resolution, configuration, exception
+flow, target-method selection, method policy, and reachability in focused unit
+test classes. Retain analyzer-level tests for combined Roslyn behavior,
+diagnostic IDs, arguments, and source locations. Use compilation-start actions
+to resolve framework symbols once per compilation, and register only the
+operation/symbol actions needed for supported constructs. Package the analyzer
+in the conventional NuGet analyzer assets location and verify both packages
+in a consumer project.
 
 ## 11. Implementation roadmap
 
