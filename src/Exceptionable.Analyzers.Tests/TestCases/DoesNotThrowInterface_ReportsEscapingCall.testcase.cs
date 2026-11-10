@@ -1,5 +1,6 @@
 // Tests a call that escapes a DoesNotThrow interface through a wider method contract.
-// Expected behavior: report EXC003. The interface contract still forbids the exception.
+// Expected behavior: report EXC003 because the interface still forbids the exception,
+// and EXC009 because the implementation's [Throws] does not match [DoesNotThrow].
 using Exceptionable;
 interface IApi
 {

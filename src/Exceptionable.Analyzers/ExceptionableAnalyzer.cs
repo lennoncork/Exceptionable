@@ -57,6 +57,7 @@ namespace Exceptionable.Analyzers
                     {
                         ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext);
                         UnusedDeclaredExceptionAnalysis.Analyze(symbolContext, compilationContext);
+                        InterfaceContractMatchAnalysis.Analyze(symbolContext, compilationContext);
                     },
                     SymbolKind.Method,
                     SymbolKind.NamedType,

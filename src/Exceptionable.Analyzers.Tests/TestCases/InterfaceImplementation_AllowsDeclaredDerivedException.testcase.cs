@@ -8,6 +8,7 @@ interface IApi
 }
 class Implementation : IApi
 {
+    [Throws("System.IO.IOException")]
     public void Execute()
     {
         throw new System.IO.FileNotFoundException();

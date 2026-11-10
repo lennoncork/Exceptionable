@@ -15,5 +15,6 @@ settings do not turn analysis on. Behavior and limits are defined in
 | [EXC006](diagnostics/EXC006.md) | Warning | A `try`/`catch` cannot observe a tracked exception. |
 | [EXC007](diagnostics/EXC007.md) | Warning | An `ArgumentNullException` guard may be redundant with nullable annotations. |
 | [EXC008](diagnostics/EXC008.md) | Warning | A `[Throws]` type does not escape. |
+| [EXC009](diagnostics/EXC009.md) | Warning | An implementation does not declare the same exception contract as an interface member. |
 
 Messages name exception types with their namespace-qualified display names.

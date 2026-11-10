@@ -110,7 +110,10 @@ validation; keep the guard when callers outside nullable analysis need runtime
 protection.
 
 Interface contracts are checked at interface-typed call sites, and source
-implementations are validated against all mapped interface contracts. The
+implementations are validated against all mapped interface contracts. A
+source implementation must declare the same `[Throws]` or `[DoesNotThrow]`
+contract as the interface member; a mismatch is EXC009, analogous to
+nullable's interface-implementation mismatch warnings. The
 analyzer trusts external implementations and does not validate a method
 inherited from a base class that does not itself implement the interface.
 General class virtual/override dispatch is not supported. `base` access is

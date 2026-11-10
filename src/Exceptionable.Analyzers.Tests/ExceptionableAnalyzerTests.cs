@@ -479,6 +479,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(DoesNotThrowInterface_ReportsEscapingCall)));
 
             Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC003"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC009"));
         }
 
         [Test]
@@ -487,6 +488,7 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = getDiagnostics(getTestCase(nameof(InterfaceContractNarrowsCaller_ReportsExc003)));
 
             Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC003"));
+            Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Contain("EXC009"));
         }
 
         [Test]
@@ -598,6 +600,7 @@ namespace Exceptionable.Analyzers.Tests
 
             Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC002");
             Assert.That(diagnostic.GetMessage(), Does.Contain("Exception type 'System.ArgumentException'"));
+            Assert.That(diagnostics.Count(item => item.Id == "EXC009"), Is.EqualTo(4));
         }
 
         [Test]
