@@ -817,6 +817,42 @@ The initial implementation confirms these decisions:
   GitVersion-generated package versions. `main` remains labeled `beta` until
   a release tag selects the stable or prerelease version.
 
+The constructor conclusion below is decided. The items after it are open
+and add no diagnostic yet. [RESEARCH.md](./RESEARCH.md) has the platform
+rules and the specification citations.
+
+- Instance constructors do not gain an implicit `[DoesNotThrow]` contract.
+  Construction is expected to throw when it cannot succeed, and an escaping
+  constructor throw is already inferred `[Throws]`. EXC007 remains the
+  nullable `ArgumentNullException` case. A no-throw constructor is an
+  explicit `[DoesNotThrow]` on the constructor or the type.
+- Source `Dispose`, `Dispose(bool)`, static constructors, and finalizers are
+  candidates for a "known escape is a diagnostic" rule. `[DoesNotThrow]`
+  metadata is appropriate only when the body meets the EXC006 bar. An
+  unspecified call, an external method, and a call through unannotated
+  `IDisposable` stay unspecified. A class-level `[Throws]` would not by
+  itself permit these members to throw. Finalizer and static-constructor
+  failures are not ordinary caller-visible `[Throws]` contracts: a finalizer
+  exception fails the process, and a static-constructor exception makes the
+  type unusable. `Equals`, `GetHashCode`, `ToString`, equality operators,
+  and implicit conversions can share the diagnostic. Property getters and
+  event accessors stay out of that default because specific exceptions are
+  accepted there.
+- A throw or known call in a `catch` filter is discarded by the runtime and
+  the filter is false. The flow check currently treats an operation outside
+  the `try` body as uncaught, so a filter exception can be inferred or
+  reported as escaping. Aligning that case with the specification is open.
+- DESIGN already says a `finally` exception can replace a pending exception.
+  A diagnostic for that replacement, including a known throwing call and
+  `Dispose` reached from `using` or `foreach`, is open.
+- A closed-body `catch` whose type matches no known escaping exception, and
+  an empty `catch` that swallows a known contract exception, are open. An
+  unspecified call suppresses both.
+- `ObjectDisposedException` stays explicit. A class-level `[Throws]` already
+  permits it. It is not an ambient allowance.
+- A member with no explicit contract and no escaping throw stays
+  unspecified. Lack of a tracked throw is not inferred `[DoesNotThrow]`.
+
 Async/await and iterator contracts remain open. `[Throws]` currently describes
 only synchronous exceptions; it does not describe faults observed when awaiting
 tasks or enumerating iterators. Task-like and standard enumerable-returning
