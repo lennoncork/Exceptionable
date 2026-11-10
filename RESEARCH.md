@@ -68,6 +68,34 @@ document the project-level configuration surface.
   positive and negative consumer examples.
 - Prefer compiler-visible metadata so contracts can be consumed across
   project boundaries, subject to Exceptionable's chosen attribute packaging.
+- When an interface member publishes a contract, require the source
+  implementation to declare an equivalent contract. Nullable analysis already
+  does this for nullability annotations and for `[DoesNotReturn]`.
+
+### Interface and override contract matching
+
+The C# compiler reports a dedicated family of warnings when an implementation
+or override does not repeat the nullability of the member it implements. The
+catalog is
+[Nullable reference type warnings](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings).
+The closest examples for Exceptionable are:
+
+- [CS8612](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings)-[CS8617](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings)
+  and [CS8766](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings)-[CS8769](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings):
+  the nullability of a type, return, or parameter does not match an
+  implemented or implicitly implemented member.
+- [CS8770](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/nullable-warnings):
+  a method lacks `[DoesNotReturn]` to match an implemented or overridden
+  member. This is the closest attribute-level precedent: the interface (or
+  override) published an annotation, and the implementation must declare it
+  too.
+
+EXC009 follows that declaration-matching pattern for `[Throws]` and
+`[DoesNotThrow]` on interface implementations. It compares declared contracts,
+not inferred throws. It does not change class virtual/override replacement,
+which [DESIGN.md](./DESIGN.md) still treats as an explicit replacement rather
+than a mismatch. Do not treat the compiler's override warnings as a
+requirement to diagnose Exceptionable override replacement.
 
 ### Important difference from nullable analysis
 

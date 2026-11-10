@@ -11,7 +11,11 @@ namespace Exceptionable.Analyzers.Contracts
     {
         private readonly ExceptionTypeResolver exceptionTypeResolver;
         private readonly Func<IMethodSymbol, ImmutableArray<INamedTypeSymbol>>? implicitDeclaredTypes;
+        private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> declaredContracts =
+            new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> effectiveContracts =
+            new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<IMethodSymbol, ImmutableArray<IMethodSymbol>> implementedInterfaceMembers =
             new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<IMethodSymbol, ImmutableArray<ExceptionContract>> implementedInterfaceContracts =
             new(SymbolEqualityComparer.Default);
@@ -24,8 +28,14 @@ namespace Exceptionable.Analyzers.Contracts
             this.implicitDeclaredTypes = implicitDeclaredTypes;
         }
 
+        internal ExceptionContract GetDeclaredContract(IMethodSymbol method) =>
+            this.declaredContracts.GetOrAdd(method, this.resolveDeclaredContract);
+
         internal ExceptionContract GetEffectiveContract(IMethodSymbol method) =>
             this.effectiveContracts.GetOrAdd(method, this.resolveEffectiveContract);
+
+        internal ImmutableArray<IMethodSymbol> GetImplementedInterfaceMembers(IMethodSymbol method) =>
+            this.implementedInterfaceMembers.GetOrAdd(method, this.resolveImplementedInterfaceMembers);
 
         internal ImmutableArray<ExceptionContract> GetImplementedInterfaceContracts(IMethodSymbol method) =>
             this.implementedInterfaceContracts.GetOrAdd(method, this.resolveImplementedInterfaceContracts);
@@ -85,10 +95,11 @@ namespace Exceptionable.Analyzers.Contracts
                     : ExceptionContract.Unspecified;
         }
 
+        private ExceptionContract resolveDeclaredContract(IMethodSymbol method) =>
+            this.resolveEffectiveContract(method, new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default));
+
         private ExceptionContract resolveEffectiveContract(IMethodSymbol method) =>
-            this.includeImplicit(
-                method,
-                this.resolveEffectiveContract(method, new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default)));
+            this.includeImplicit(method, this.GetDeclaredContract(method));
 
         private ExceptionContract includeImplicit(IMethodSymbol method, ExceptionContract contract)
         {
@@ -254,7 +265,7 @@ namespace Exceptionable.Analyzers.Contracts
                 : new ExceptionContract(false, [.. kept]);
         }
 
-        private ImmutableArray<ExceptionContract> resolveImplementedInterfaceContracts(IMethodSymbol method)
+        private ImmutableArray<IMethodSymbol> resolveImplementedInterfaceMembers(IMethodSymbol method)
         {
             if (method.ContainingType.TypeKind == TypeKind.Interface)
             {
@@ -265,7 +276,7 @@ namespace Exceptionable.Analyzers.Contracts
                 .Concat(method.ContainingType.AllInterfaces.SelectMany(
                     type => type.GetMembers().OfType<IMethodSymbol>()));
             var seenMembers = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-            ImmutableArray<ExceptionContract>.Builder contracts = ImmutableArray.CreateBuilder<ExceptionContract>();
+            ImmutableArray<IMethodSymbol>.Builder members = ImmutableArray.CreateBuilder<IMethodSymbol>();
 
             foreach (IMethodSymbol? interfaceMember in interfaceMembers)
             {
@@ -274,11 +285,23 @@ namespace Exceptionable.Analyzers.Contracts
                     continue;
                 }
 
-                if (method.ContainingType.FindImplementationForInterfaceMember(interfaceMember) is not IMethodSymbol implementation || !implementation.IsSameMethod(method))
+                if (method.ContainingType.FindImplementationForInterfaceMember(interfaceMember) is not IMethodSymbol implementation ||
+                    !implementation.IsSameMethod(method))
                 {
                     continue;
                 }
 
+                members.Add(interfaceMember);
+            }
+
+            return members.ToImmutable();
+        }
+
+        private ImmutableArray<ExceptionContract> resolveImplementedInterfaceContracts(IMethodSymbol method)
+        {
+            ImmutableArray<ExceptionContract>.Builder contracts = ImmutableArray.CreateBuilder<ExceptionContract>();
+            foreach (IMethodSymbol interfaceMember in this.GetImplementedInterfaceMembers(method))
+            {
                 ExceptionContract contract = this.GetEffectiveContract(interfaceMember);
                 if (contract.HasContract)
                 {

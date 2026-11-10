@@ -165,6 +165,20 @@ type parameter is rejected by the compiler and is not a contract.
   own contract keeps that base contract. When the member replaces several
   base members, the effective contract is their intersection; if the
   intersection allows nothing, the member is `[DoesNotThrow]`.
+- A source implementation of an interface member that has a `[Throws]` or
+  `[DoesNotThrow]` contract must declare an equivalent contract. Equivalence
+  is the same `[DoesNotThrow]` or the same set of exception types. The
+  implementation may declare that contract on the member, its property or
+  event, an inherited override, or the containing class or struct. Inferred
+  throws do not count. A mismatch is EXC009. This is the Exceptionable analog
+  of nullable's interface-implementation mismatch warnings: the published
+  attribution on the implementation must match the interface member. Throw
+  and call checks still use the intersection described below; EXC009 does
+  not replace those diagnostics. An unannotated interface member does not
+  require the implementation to be unannotated. Class virtual and override
+  replacement remains allowed and is not EXC009. When one method implements
+  several interface members, each mismatched member is reported. Explicit
+  implementations can match each interface separately.
 - Accessor declarations may carry method-targeted attributes. A property or
   event contract applies to its accessors unless an accessor declares its own
   contract. Analyzer call checks include property get/set and event add/remove
@@ -269,7 +283,9 @@ An interface contract does not replace inference on a source implementation.
 A call through the interface uses the interface contract. The implementation
 is still checked against every interface contract it implements. Its escaping
 throws are still inferred for a call on the concrete member, unless that
-implementation has an explicit contract of its own.
+implementation has an explicit contract of its own. EXC009 still requires the
+implementation to declare the same `[Throws]` or `[DoesNotThrow]` contract as
+the interface member; inference is not that declaration.
 
 When nullable annotations are enabled on the constructor and the escaping
 throw guards a non-nullable reference parameter, EXC007 reports that the guard
@@ -369,6 +385,8 @@ information from Roslyn. The initial implementation should recognize:
   interface-typed value. Source implementation methods are checked against
   every implemented interface contract, including explicit implementations,
   inherited interface members, and multiple interfaces mapped to one method.
+  A source implementation whose declared contract is not equivalent to an
+  implemented interface contract is EXC009.
 
 Use Roslyn's operation, control-flow, and symbol APIs rather than text
 matching. Generated code is not analyzed. Analyze operations only in
@@ -386,12 +404,16 @@ member contract described above. Calls through different interfaces use
 their respective contracts. An implementation must satisfy all known interface contracts it
 implements, so conflicting declarations constrain the implementation to the
 intersection of their permitted exception sets. Such declarations are not
-themselves conflicts when placed on separate interfaces. Explicit and implicit
+themselves EXC005 conflicts when placed on separate interfaces; they are
+EXC009 when the implementation's declared contract does not match each
+interface member. Explicit and implicit
 implementations are mapped with Roslyn symbols, and inherited interface
 members retain the contract on the member's declaring interface. An interface
 contract is trusted for external implementations; a source method inherited
 from a base class that does not itself implement the interface is not
-validated against a derived class's interface contract. Open virtual,
+validated against a derived class's interface contract. EXC009 follows the
+same mapping: it is reported on a source implementation declared by the type
+that implements the interface. Open virtual,
 abstract, and unsealed override calls stay unsupported because the runtime
 target can differ from the statically selected method. A sealed method, and a
 method declared on a sealed type, is analyzed as that method. A `base` access
@@ -465,6 +487,7 @@ categories, default severities, and help links. The catalog is
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
 | EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled; the guard may be redundant with the nullable contract, which is not runtime validation. | Warning |
 | EXC008 | A `[Throws]` type does not escape, and the member produces some other known escaping exception. Remove the stale declaration or restore a throw or call that produces it. | Warning |
+| EXC009 | A source implementation's declared `[Throws]` or `[DoesNotThrow]` contract does not match an implemented interface member. | Warning |
 
 EXC001 and EXC002 report explicit throws. EXC008 reports a `[Throws]`
 attribute whose type no longer escapes. A call whose contract is explicit
@@ -474,6 +497,8 @@ covered by the inferred set is not EXC002. A nullable-redundant constructor
 exception types with their namespace-qualified display names, so two exceptions that share a
 short name stay distinct. Diagnostics identify the relevant throw or call
 site. Avoid diagnostics for exception sources with no known contract.
+EXC009 reports the implementing member when its declared contract is not
+equivalent to the interface member's declared contract.
 
 ## 9. Analysis configuration
 
@@ -572,11 +597,11 @@ state.
 The `Contracts/` area contains the normalized `ExceptionContract`,
 `ContractResolver`, `ExceptionTypeResolver`, and attribute/symbol helpers.
 `ContractResolver` is the only place that applies method, type, override, and
-interface precedence. Resolved names and effective contracts are cached for
-the compilation.
-`Analysis/` contains separate declaration, throw, call, and unnecessary-catch
-handlers, plus exception-flow, operation-target, method-policy,
-reachability, and inferred-throw components. `InferredThrowAnalysis` scans
+interface precedence. Resolved names, declared contracts, and effective
+contracts are cached for the compilation.
+`Analysis/` contains separate declaration, throw, call, unnecessary-catch,
+and interface-contract-match handlers, plus exception-flow, operation-target,
+method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis` scans
 source for the defining compilation and reads generated metadata for a method
 that has no declaring syntax.
 `Generation/` contains the incremental generator that writes that metadata
@@ -617,6 +642,8 @@ phase 4 documentation:
 - EXC008 warns when a `[Throws]` type is stale relative to the known escaping
   exceptions. A `[Throws]` member with no known escaping exception is left
   unchanged.
+- EXC009 warns when a source implementation does not declare the same
+  `[Throws]` or `[DoesNotThrow]` contract as an implemented interface member.
 - Supported hosts are recorded in section 13.
 
 Still open:
@@ -636,7 +663,8 @@ Still open:
   profiling in a representative IDE project before a deeper pipeline redesign.
 - Async/await and iterator contracts, before enabling rules for those
   constructs. Override compatibility beyond the sealed and `base` cases also
-  remains future work.
+  remains future work. EXC009 covers interface implementations only; class
+  virtual and override contract replacement stays allowed.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -685,6 +713,10 @@ Minimum acceptance criteria for the initial usable release:
 - A `[Throws]` type that no reachable throw or known call produces is EXC008
   when the member produces some other known escaping exception. A member
   whose `[Throws]` contract has no known escaping exception is not EXC008.
+- A source implementation that omits or changes an implemented interface
+  `[Throws]` or `[DoesNotThrow]` contract is EXC009. A matching declaration
+  on the member, its property or event, an inherited override, or the
+  containing type is accepted. An inferred throw is not a match.
 - A referencing compilation reports EXC003 for an inferred contract recorded
   in a referenced assembly, without that member's source.
 - A nullable-aware constructor that throws `ArgumentNullException` for a
@@ -713,7 +745,7 @@ The initial implementation confirms these decisions:
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006-EXC008 are
+- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006-EXC009 are
   enabled warnings and EXC004-EXC005 are enabled errors.
 - A reachable uncaught throw on a supported synchronous member adds an
   inferred `[Throws]` contract for that exception. The generator records it
@@ -738,7 +770,9 @@ The initial implementation confirms these decisions:
   their accessors unless an accessor declares its own.
 - Interface contracts apply at interface-typed call sites and, together with
   the implementation's own contract, at throws and calls inside a source
-  implementation. External implementations and methods inherited from a
+  implementation. A source implementation must also declare an equivalent
+  `[Throws]` or `[DoesNotThrow]` contract; a mismatch is EXC009. External
+  implementations and methods inherited from a
   non-implementing base class are trusted rather than proven. The attributes
   cannot be applied to an interface type. A derived interface member that
   redeclares a base member and has no contract of its own keeps the base

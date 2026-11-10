@@ -77,6 +77,15 @@ namespace Exceptionable.Analyzers.Diagnostics
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC007.md");
 
+        internal static readonly DiagnosticDescriptor InterfaceContractMismatch = new(
+            "EXC009",
+            "Implementation exception contract does not match interface",
+            "The exception contract of '{0}' does not match implemented member '{1}'",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC009.md");
+
         internal static ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             ImmutableArray.Create(
                 DoesNotThrowEscapes,
@@ -86,6 +95,7 @@ namespace Exceptionable.Analyzers.Diagnostics
                 ConflictingContracts,
                 UnnecessaryTryCatch,
                 UnusedDeclaredException,
-                RedundantArgumentNullException);
+                RedundantArgumentNullException,
+                InterfaceContractMismatch);
     }
 }

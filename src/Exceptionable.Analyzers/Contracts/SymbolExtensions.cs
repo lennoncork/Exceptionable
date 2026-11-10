@@ -86,6 +86,12 @@ namespace Exceptionable.Analyzers.Contracts
             return true;
         }
 
+        internal static string GetQualifiedContractDisplayName(this IMethodSymbol method)
+        {
+            string typeName = method.ContainingType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+            return typeName + "." + method.GetContractDisplayName();
+        }
+
         internal static string GetContractDisplayName(this IMethodSymbol method)
         {
             string? memberName = method.AssociatedSymbol?.Name;

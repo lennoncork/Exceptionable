@@ -44,6 +44,18 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void GetImplementedInterfaceMembers_ReturnsTheMappedMember()
+        {
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
+            ImmutableArray<Microsoft.CodeAnalysis.IMethodSymbol> members = resolver.GetImplementedInterfaceMembers(
+                TestCompilation.GetMethod(compilation, "Implementation", "Execute"));
+
+            Assert.That(members.Single().ContainingType.Name, Is.EqualTo("IParent"));
+            Assert.That(members.Single().Name, Is.EqualTo("Execute"));
+        }
+
+        [Test]
         public void IsExceptionPermitted_IntersectsMethodAndInterfaceContracts()
         {
             string intersectionSource = ExceptionableAnalyzerTests.GetTestCase("IsExceptionPermitted_IntersectsMethodAndInterfaceContracts.Source2");
@@ -148,6 +160,11 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(exception.DeclaredTypes.Select(type => type.ToDisplayString()).ToArray(),
                 Is.EqualTo(new[] { "System.Exception" }));
             Assert.That(method.HasContract, Is.False);
+            Assert.That(resolver.GetDeclaredContract(constructor(host, "string")).HasContract, Is.False);
+            Assert.That(unmarked.Matches(doesNotThrow), Is.False);
+            Assert.That(
+                ioException.Matches(resolver.GetDeclaredContract(constructor(host, "bool"))),
+                Is.True);
         }
 
         private static Microsoft.CodeAnalysis.IMethodSymbol constructor(

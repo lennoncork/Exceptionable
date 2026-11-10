@@ -8,6 +8,7 @@ interface IApi
 }
 class Implementation : IApi
 {
+    [DoesNotThrow]
     public void Execute()
     {
         throw new System.InvalidOperationException();
