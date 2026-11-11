@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Exceptionable.Analyzers.Configuration;
 using Exceptionable.Analyzers.Contracts;
+using Exceptionable.Analyzers.Polyfills;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -17,6 +18,7 @@ namespace Exceptionable.Analyzers.Analysis
         {
             this.Compilation = compilation;
             this.Options = new AnalysisOptions(optionsProvider);
+            this.Polyfills = new PolyfillResolver(compilation, PolyfillCatalog.Modules);
             this.ExceptionTypeResolver = new ExceptionTypeResolver(compilation);
             this.Reachability = new ReachabilityAnalysis();
             this.InferredThrows = new InferredThrowAnalysis(compilation, this.Reachability);
@@ -31,6 +33,8 @@ namespace Exceptionable.Analyzers.Analysis
         internal Compilation Compilation { get; }
 
         internal AnalysisOptions Options { get; }
+
+        internal PolyfillResolver Polyfills { get; }
 
         internal ExceptionTypeResolver ExceptionTypeResolver { get; }
 

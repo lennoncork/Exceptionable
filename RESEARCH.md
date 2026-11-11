@@ -379,6 +379,53 @@ Roslynator is most useful as a scale and packaging reference. Its additional
 projects, version-specific assets, and shared abstractions are not a
 recommended starting complexity for this analyzer.
 
+## Existing exception analyzers
+
+These projects overlap with Exceptionable. They are comparison points, not
+requirements. The summaries come from each project's README at the pinned
+revision; they were not run or audited. Check the current README before
+relying on a claim.
+
+- **CheckedExceptions** —
+  [repository](https://github.com/marinasundstrom/CheckedExceptions/tree/39eb1b8a9bcc338fef69cca87da60d8b7bbbd01f)
+  ([README](https://github.com/marinasundstrom/CheckedExceptions/blob/39eb1b8a9bcc338fef69cca87da60d8b7bbbd01f/README.md),
+  MIT, NuGet `Sundstrom.CheckedExceptions`). The closest competitor. It is
+  Java-style: a caller must handle an exception or declare it with
+  `[Throws(typeof(...))]`. Its README says it reads exceptions for unannotated
+  .NET and third-party methods from XML documentation, ships code fixes, and
+  has settings for XML-doc interop and LINQ support. Its `[Throws]` attribute
+  is defined in the consuming project. Exceptionable differs in using a
+  separate attribute package, `[DoesNotThrow]`, interface-contract matching,
+  nullable-style enablement, and inferred contracts in assembly metadata.
+  The XML-documentation approach is the alternative to the polyfill catalog
+  in DESIGN.md section 9.
+- **ThrowsAnalyzer** —
+  [repository](https://github.com/wieslawsoltes/ThrowsAnalyzer/tree/286f79a35d0d64c540851eb29f0833eb9a100234)
+  (MIT). Its README lists 30 diagnostics and 16 code fixes across throw
+  statements, unhandled exceptions, async, iterator, and lambda patterns, plus
+  a CLI. It focuses on handling patterns and documentation rather than
+  declared contracts.
+- **Exceptionator** —
+  [repository](https://github.com/elmahio/Exceptionator/tree/f3d0f5e179923ebe296e611f0f61b6674b52bb22).
+  Best-practice rules such as including a message, avoiding `System.Exception`,
+  and preserving inner exceptions. No contract model.
+- **ExceptionAnalyzer** ([SergeyTeplyakov](https://github.com/SergeyTeplyakov/ExceptionAnalyzer/tree/0016776c02e990f7144d58a68a6e3879bfaea738),
+  [cezarypiatek](https://github.com/cezarypiatek/ExceptionAnalyzer/tree/0109d6d3ae88c99a6ef3c4e98a9e134defa46527);
+  both MIT, last pushed in 2018 and 2019). Code-smell rules about empty or
+  swallowing catch blocks, generic exception types, and inner exceptions.
+
+What to take from them:
+
+- A catalog of external exception behavior is needed because most real
+  exceptions come from framework calls. XML documentation is one source;
+  DESIGN.md section 9 chooses a curated, per-namespace catalog instead so
+  each entry is reviewable, versioned with the analyzer, and switchable.
+- Code fixes are part of the competing experience. DESIGN.md section 11
+  records the fixes that exist; section 13 records the separate-project layout,
+  following the Roslynator example above.
+- Async, iterator, and LINQ handling is where the other tools differ most.
+  DESIGN.md section 9 records which of those the catalog covers now.
+
 ## Microsoft Roslyn documentation
 
 - [Tutorial: Write your first analyzer and code fix](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/tutorials/how-to-write-csharp-analyzer-code-fix)

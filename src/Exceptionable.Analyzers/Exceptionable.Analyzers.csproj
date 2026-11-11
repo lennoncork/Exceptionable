@@ -26,6 +26,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Exceptionable.Analyzers.CodeFixes\Exceptionable.Analyzers.CodeFixes.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(SolutionOutputPath)\Exceptionable.Analyzers.CodeFixes\bin\$(Configuration)\netstandard2.0\Exceptionable.Analyzers.CodeFixes.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
     <None Include="$(OutputPath)$(AssemblyName).dll"
           Pack="true"
           PackagePath="analyzers/dotnet/cs"

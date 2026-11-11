@@ -18,3 +18,46 @@ settings do not turn analysis on. Behavior and limits are defined in
 | [EXC009](diagnostics/EXC009.md) | Warning | An implementation does not declare the same exception contract as an interface member. |
 
 Messages name exception types with their namespace-qualified display names.
+
+## Code fixes
+
+The `Exceptionable.Analyzers` package includes code fixes for:
+
+- EXC003: add `[Throws("<type>")]` to the enclosing method, constructor or
+  accessor. Not offered for `[DoesNotThrow]` members or inside lambdas and
+  local functions.
+- EXC008: remove the stale `[Throws]` attribute.
+
+## Framework polyfills
+
+Framework methods carry no `[Throws]` metadata. Exceptionable ships a curated
+catalog of exceptions for specific APIs, organized by namespace. It is on by
+default and applies only when analysis is enabled. You can turn it off for
+the project, a directory, or a single namespace.
+
+```xml
+<PropertyGroup>
+  <ExceptionablePolyfills>disable</ExceptionablePolyfills>
+</PropertyGroup>
+```
+
+```editorconfig
+exceptionable_polyfill.System.Linq = disable
+exceptionable_polyfill.System.IO = enable
+```
+
+The most specific namespace setting wins, then `exceptionable_polyfill`, then
+`<ExceptionablePolyfills>`. A polyfilled call is reported as EXC003. An
+explicit or inferred contract always takes precedence.
+
+| Namespace | APIs |
+|---|---|
+| `System` | `Int32.Parse`, `Int64.Parse`, `Guid.Parse`, `DateTime.Parse` |
+| `System.Collections.Generic` | `Dictionary` and `List` indexers, `Queue.Dequeue`/`Peek`, `Stack.Pop`/`Peek` |
+| `System.IO` | `File` read, write, copy, and delete members; `Directory.CreateDirectory` and `GetFiles` |
+| `System.Linq` | `First`, `Last`, `Single`, `ElementAt`, unseeded `Aggregate` |
+| `System.Threading.Tasks` | `Task.Wait`, `Task.WaitAll`, `Task<T>.Result` |
+
+Missing an API? Open an issue naming the namespace, type, member, and the
+exception it documents. To add one, edit the module for its namespace in
+`src/Exceptionable.Analyzers/Polyfills/` and add a test.

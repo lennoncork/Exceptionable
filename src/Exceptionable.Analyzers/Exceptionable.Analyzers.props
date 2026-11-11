@@ -1,5 +1,6 @@
 <Project>
   <ItemGroup>
     <CompilerVisibleProperty Include="Exceptionable" />
+    <CompilerVisibleProperty Include="ExceptionablePolyfills" />
   </ItemGroup>
 </Project>

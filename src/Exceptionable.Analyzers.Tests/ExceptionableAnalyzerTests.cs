@@ -999,7 +999,8 @@ namespace Exceptionable.Analyzers.Tests
             string? fileSetting = "enable",
             bool includeExceptionableAttributes = true,
             IEnumerable<MetadataReference>? additionalReferences = null,
-            string assemblyName = "ExceptionableTests")
+            string assemblyName = "ExceptionableTests",
+            IReadOnlyDictionary<string, string>? additionalOptions = null)
         {
             return getDiagnostics(
                 source,
@@ -1007,7 +1008,8 @@ namespace Exceptionable.Analyzers.Tests
                 fileSetting,
                 includeExceptionableAttributes,
                 additionalReferences,
-                assemblyName);
+                assemblyName,
+                additionalOptions);
         }
 
         internal static string GetTestCase(string testName)
@@ -1021,7 +1023,8 @@ namespace Exceptionable.Analyzers.Tests
             string? fileSetting = "enable",
             bool includeExceptionableAttributes = true,
             IEnumerable<MetadataReference>? additionalReferences = null,
-            string assemblyName = "ExceptionableTests")
+            string assemblyName = "ExceptionableTests",
+            IReadOnlyDictionary<string, string>? additionalOptions = null)
         {
             List<MetadataReference> references = [.. ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(Path.PathSeparator)
@@ -1046,7 +1049,7 @@ namespace Exceptionable.Analyzers.Tests
 
             AnalyzerOptions options = new(
                 [],
-                new TestAnalyzerConfigOptionsProvider(projectSetting, fileSetting));
+                new TestAnalyzerConfigOptionsProvider(projectSetting, fileSetting, additionalOptions));
             string[] compilerErrors = compilation.GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .Select(diagnostic => diagnostic.ToString())
@@ -1070,22 +1073,31 @@ namespace Exceptionable.Analyzers.Tests
                 $"{testName}.testcase.cs"));
         }
 
-        private sealed class TestAnalyzerConfigOptionsProvider(string? projectSetting, string? fileSetting) : AnalyzerConfigOptionsProvider
+        private sealed class TestAnalyzerConfigOptionsProvider(
+            string? projectSetting,
+            string? fileSetting,
+            IReadOnlyDictionary<string, string>? additionalOptions) : AnalyzerConfigOptionsProvider
         {
-            private readonly AnalyzerConfigOptions treeOptions = new TestAnalyzerConfigOptions("exceptionable_analysis", fileSetting);
+            private readonly AnalyzerConfigOptions treeOptions = new TestAnalyzerConfigOptions(
+                (additionalOptions ?? ImmutableDictionary<string, string>.Empty)
+                    .Where(pair => !pair.Key.StartsWith("build_property.", StringComparison.Ordinal))
+                    .Concat(fileSetting is null ? [] : [new("exceptionable_analysis", fileSetting)]));
 
-            public override AnalyzerConfigOptions GlobalOptions { get; } = new TestAnalyzerConfigOptions("build_property.Exceptionable", projectSetting);
+            public override AnalyzerConfigOptions GlobalOptions { get; } = new TestAnalyzerConfigOptions(
+                (additionalOptions ?? ImmutableDictionary<string, string>.Empty)
+                    .Where(pair => pair.Key.StartsWith("build_property.", StringComparison.Ordinal))
+                    .Concat(projectSetting is null ? [] : [new("build_property.Exceptionable", projectSetting)]));
 
             public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => this.treeOptions;
 
             public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => this.treeOptions;
         }
 
-        private sealed class TestAnalyzerConfigOptions(string key, string? value) : AnalyzerConfigOptions
+        private sealed class TestAnalyzerConfigOptions(IEnumerable<KeyValuePair<string, string>>? options) : AnalyzerConfigOptions
         {
-            private readonly IReadOnlyDictionary<string, string> values = value is null
-                    ? []
-                    : ImmutableDictionary<string, string>.Empty.Add(key, value);
+            private readonly Dictionary<string, string> values = new(
+                options ?? [],
+                StringComparer.OrdinalIgnoreCase);
 
             public override bool TryGetValue(string key, out string value)
             {
