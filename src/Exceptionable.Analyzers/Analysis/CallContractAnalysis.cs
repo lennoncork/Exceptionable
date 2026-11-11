@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
@@ -55,8 +56,7 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                ExceptionContract targetContract = contractResolver.GetEffectiveContract(targetMethod);
-                foreach (INamedTypeSymbol declaredType in targetContract.DeclaredTypes)
+                foreach (INamedTypeSymbol declaredType in getThrownTypes(targetMethod, operation, compilationContext))
                 {
                     if (hosts.All(host =>
                             contractResolver.IsExceptionPermitted(host, declaredType) ||
@@ -74,10 +74,30 @@ namespace Exceptionable.Analyzers.Analysis
                     operationContext.ReportDiagnostic(Diagnostic.Create(
                         ExceptionableDiagnostics.CallerViolation,
                         getReportLocation(operation),
+                        ImmutableDictionary<string, string?>.Empty.Add("ExceptionType", declaredType.GetExceptionDisplayName()),
                         targetMethod.GetContractDisplayName(),
                         declaredType.GetExceptionDisplayName()));
                 }
             }
+        }
+
+        private static ImmutableArray<INamedTypeSymbol> getThrownTypes(
+            IMethodSymbol target,
+            IOperation operation,
+            ExceptionableCompilationContext compilationContext)
+        {
+            ExceptionContract contract = compilationContext.ContractResolver.GetEffectiveContract(target);
+            if (contract.HasContract)
+            {
+                return contract.DeclaredTypes;
+            }
+
+            // A polyfill only fills in an external member that has no contract of its own.
+            string? @namespace = compilationContext.Polyfills.GetNamespace(target);
+            return @namespace is not null &&
+                compilationContext.Options.IsPolyfillEnabled(operation.Syntax.SyntaxTree, @namespace)
+                    ? compilationContext.Polyfills.GetThrownTypes(target)
+                    : ImmutableArray<INamedTypeSymbol>.Empty;
         }
 
         private static string exceptionIdentity(ITypeSymbol type) =>

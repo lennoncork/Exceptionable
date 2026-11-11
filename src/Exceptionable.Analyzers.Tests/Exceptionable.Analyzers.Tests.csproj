@@ -11,12 +11,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NUnit" Version="4.3.2" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Exceptionable.Analyzers.CodeFixes\Exceptionable.Analyzers.CodeFixes.csproj" />
     <ProjectReference Include="..\Exceptionable.Analyzers\Exceptionable.Analyzers.csproj" />
     <ProjectReference Include="..\Exceptionable\Exceptionable.csproj" />
   </ItemGroup>

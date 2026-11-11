@@ -69,6 +69,13 @@ Per-file control uses `exceptionable_analysis`.
 Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings.
 Severity settings do not enable analysis.
 
+Framework exception polyfills (for example `File.ReadAllText` and LINQ
+`First`) are on by default once analysis is enabled. Turn them off with
+`<ExceptionablePolyfills>disable</ExceptionablePolyfills>`,
+`exceptionable_polyfill = disable`, or per namespace such as
+`exceptionable_polyfill.System.IO = disable`. See the
+[polyfill documentation](./docs/README.md#framework-polyfills).
+
 ## Compatibility
 
 The analyzer package targets .NET Standard 2.0 and is built against Roslyn
@@ -131,7 +138,8 @@ For diagnostic IDs and details, see the
 exceptions observed when awaiting a task or enumerating an iterator. Async
 and iterator bodies and recognized deferred call sites (including `Task`,
 `ValueTask`, and standard enumerable return types) are skipped.
-Non-constant exception filters do not prove handling.
+Non-constant exception filters do not prove handling. Polyfills do not yet
+cover awaited tasks or deferred LINQ operators.
 
 See [DESIGN.md](./DESIGN.md) for detailed semantics and boundaries.
 

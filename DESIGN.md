@@ -84,7 +84,9 @@ takes precedence.
 - Runtime checks, exception wrapping, or generated try/catch blocks.
 - Inferring exceptions from code that has no explicit throw in a supported
   member. Framework and third-party methods stay unspecified unless their
-  assembly recorded an inferred contract or they carry `[Throws]`.
+  assembly recorded an inferred contract, they carry `[Throws]`, or an
+  enabled polyfill (section 9) describes them. The analyzer does not read XML
+  documentation comments for exception information.
   `ThrowIfNull` and other helper calls stay ordinary calls. Section 6
   describes the escaping-throw inference that is in scope.
 - Proving behavior across reflection, native calls, dynamic dispatch, or
@@ -464,6 +466,7 @@ in later phases for:
   A closed constructed type that derives from `System.Exception` is a valid
   generic attribute argument.
 - External APIs with contracts distributed through reference assemblies.
+  Polyfills (section 9) cover curated framework APIs in the meantime.
 
 Until a case is supported, it must not produce misleading certainty. Async
 and iterator bodies and their recognized deferred call sites are skipped;
@@ -567,6 +570,88 @@ can suppress diagnostics inside a span after analysis is enabled; it cannot
 turn analysis on. The parser behavior and links are in
 [RESEARCH.md](./RESEARCH.md).
 
+### Framework polyfills
+
+Framework and third-party methods carry no `[Throws]` metadata, so most real
+exception sources would otherwise stay unspecified. Exceptionable fills that
+gap with **polyfills**: a curated catalog, built into the analyzer, of the
+exceptions specific external APIs may throw. A polyfill behaves as if the
+external member carried `[Throws]` for the listed types.
+
+**Decision:** the analyzer does not read XML documentation comments for
+exception information. XML documentation is incomplete, inconsistent about
+inherited and argument-validation exceptions, and not always available to an
+analyzer (it must be supplied as an additional file and is absent for some
+references). A catalog is reviewable, testable with compilable snippets,
+versioned with the analyzer, and gives each API one place to correct. XML
+documentation may be revisited only as a separate, opt-in source (section 13).
+
+Rules:
+
+- **Organized by namespace.** Each namespace is one module under
+  `Polyfills/` that lists its types and members. The namespace is also the
+  configuration key. Adding an API means adding one entry to its module and
+  one analyzer test; adding a namespace means adding one module and
+  registering it in `PolyfillCatalog`.
+- **Enabled by default, with opt-out.** Polyfills are on whenever analysis
+  is enabled; a project that enabled analysis gets framework coverage without
+  extra setup. Because a new catalog entry can add EXC003 diagnostics in a
+  later analyzer version, every entry must be conservative and correct, and
+  any namespace or the whole catalog can be turned off. Polyfills never apply
+  when analysis itself is disabled.
+- **Developers have the final say.** Enablement is resolved per source file
+  for the namespace of the called member, in this order:
+  1. `exceptionable_polyfill.<namespace> = enable|disable` in
+     `.editorconfig`. The most specific namespace wins, so
+     `exceptionable_polyfill.System.IO` overrides
+     `exceptionable_polyfill.System`.
+  2. `exceptionable_polyfill = enable|disable` in `.editorconfig` for all
+     namespaces.
+  3. The `<ExceptionablePolyfills>` project property (`enable` or
+     `disable`).
+  4. Otherwise enabled.
+
+  Any other value is ignored, so a typo does not change an outer setting.
+  Keys are not case sensitive. A catalog entry never overrides an explicit
+  `[Throws]` or `[DoesNotThrow]` contract or an inferred contract recorded in
+  the referenced assembly.
+- **Source members are never matched.** A polyfill applies only to members
+  without declaring syntax in the compilation.
+- **What an entry lists.** The exceptions a member throws for valid arguments
+  because of the state of the environment or its inputs, such as
+  `IOException` from `File.ReadAllText` or `InvalidOperationException` from
+  `Enumerable.First` on an empty sequence. An entry lists the most useful
+  covering type: `IOException` covers `FileNotFoundException`. It omits
+  `ArgumentNullException`, which nullable analysis owns. An entry can be
+  limited to overloads by parameter count when overloads differ.
+- **Reporting.** A polyfilled call is checked like an annotated call and is
+  EXC003. It is not inferred onto its caller and is not a `[DoesNotThrow]`
+  call, so EXC006 and EXC008 are unchanged.
+- **Per compilation.** The catalog is static data (names only). Exception
+  symbols are resolved per compilation and are not retained across
+  compilations. A type absent from a compilation drops that entry.
+
+The catalog covers `System` (`Parse` members), `System.Collections.Generic`,
+`System.IO`, `System.Linq`, and `System.Threading.Tasks`; the user-facing
+list is in [docs/README.md](./docs/README.md#framework-polyfills). A missing
+API is requested with an issue naming the namespace, type, member, and the
+documented exception.
+
+**Async and LINQ.** The same catalog is the mechanism for both, in stages:
+
+- LINQ operators that execute immediately (`First`, `Last`, `Single`,
+  `ElementAt`, and the unseeded `Aggregate`) are entries today. Deferred
+  operators such as `Select` and `Where` return an enumerable and are skipped
+  by the deferred-return policy; exceptions from their lambdas surface when
+  the sequence is enumerated, which needs the iterator model in section 7.
+- Blocking task members (`Task.Wait`, `Task.WaitAll`, `Task<T>.Result`) are
+  entries today and report `AggregateException`.
+- Awaited tasks are **not** covered yet. A task-returning API is skipped and
+  async method bodies are not analyzed. Supporting them requires an entry to
+  mark exceptions observed on `await`, plus analysis of `await` inside
+  catches and async hosts. This is an open decision (section 13) and the next
+  stage after the synchronous catalog.
+
 ## 10. Suggested architecture
 
 Keep the public attributes independent of analyzer implementation details.
@@ -581,10 +666,13 @@ Organize the analyzer package into these logical parts:
 3. **Exception-flow analysis** — identifies known exception sources,
    propagates them through supported control flow, and determines whether
    catches or the enclosing contract handle them.
-4. **Diagnostics** — declares rules and reports locations and arguments;
+4. **Polyfills** — per-namespace modules of curated external exception
+   information, resolved per compilation and gated by configuration
+   (section 9).
+5. **Diagnostics** — declares rules and reports locations and arguments;
    analysis enablement and per-rule severity follow standard Roslyn
    configuration.
-5. **Tests** — analyzer tests for valid and invalid code, attribute lookup,
+6. **Tests** — analyzer tests for valid and invalid code, attribute lookup,
    inheritance, and documented limitations.
 
 The implementation keeps `ExceptionableAnalyzer` as the Roslyn registration
@@ -608,6 +696,11 @@ that has no declaring syntax.
 and the marker used to recognize it. The generator lives in the analyzer
 assembly so the NuGet `analyzers/dotnet/cs` asset loads it with the analyzer.
 It does not add a public attribute to the Exceptionable package.
+`Polyfills/` contains one `PolyfillModule` per namespace, the
+`PolyfillCatalog` that registers them, and the per-compilation
+`PolyfillResolver` that maps a method to exception symbols.
+`CallContractAnalysis` consults it only for a method without an explicit or
+inferred contract, after `AnalysisOptions.IsPolyfillEnabled` allows it.
 `Diagnostics/` owns the descriptors. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
@@ -648,12 +741,20 @@ phase 4 documentation:
 
 Still open:
 
-- Code fixes that insert `[Throws]` into user source. Add one only where a
-  safe fix is clear. Never generate a catch that silently suppresses an
+- Code fixes. `Exceptionable.Analyzers.CodeFixes` ships two: remove a stale
+  `[Throws]` for EXC008, and add `[Throws("<type>")]` (string form, valid on
+  every target framework) to the enclosing method, constructor or accessor
+  for EXC003. The EXC003 fix is not offered inside lambdas or local
+  functions, on `[DoesNotThrow]` members, for closed generic exception types,
+  or when the `Throws` attribute is not available. The remaining candidates
+  are: add `[Throws]` for EXC002, remove an unnecessary `try`/`catch` for
+  EXC006, and align an implementation's contract for EXC009. Add a fix only
+  where it is safe. Never generate a catch that silently suppresses an
   exception.
 - Reading throws from assemblies that were not compiled with this generator.
   Framework and third-party methods stay unspecified unless they declare
-  `[Throws]`.
+  `[Throws]` or an enabled polyfill describes them. Growing the polyfill
+  catalog is ongoing, request-driven work.
 - Generator profiling used synthetic single-file compilations with 50, 250,
   and 1,000 methods (two throw sites each), one warmup, and medians of three
   runs. `RunGeneratorsAndUpdateCompilation` took 79/121/372 ms initially and
@@ -662,7 +763,8 @@ Still open:
   compilation-wide callback remains; these synthetic results do not replace
   profiling in a representative IDE project before a deeper pipeline redesign.
 - Async/await and iterator contracts, before enabling rules for those
-  constructs. Override compatibility beyond the sealed and `base` cases also
+  constructs. The polyfill catalog covers only synchronous and blocking
+  members until then (section 9). Override compatibility beyond the sealed and `base` cases also
   remains future work. EXC009 covers interface implementations only; class
   virtual and override contract replacement stays allowed.
 
@@ -826,3 +928,21 @@ The same skip includes synchronous throws inside async and iterator methods.
 Open virtual and unsealed override call sites also remain unsupported.
 `base` access is checked. Local functions and lambdas are not part of the
 enclosing method.
+
+Polyfill decisions are in section 9. Open decisions about them:
+
+- Whether new catalog entries need a staged rollout (for example, a
+  prerelease or a per-version opt-in) because default-on entries can add
+  diagnostics when the analyzer is upgraded.
+- How a catalog entry marks exceptions observed when a task is awaited or a
+  sequence is enumerated, and how `await` interacts with catches. Until then
+  awaited tasks and deferred LINQ operators stay unsupported.
+- Whether single-API overrides below namespace granularity are needed beyond
+  `exceptionable_polyfill.<namespace>` and wrapper annotations.
+- Whether XML documentation should be an additional, opt-in exception source.
+- Decided: code fixes live in the separate `Exceptionable.Analyzers.CodeFixes`
+  project, which references only Roslyn Workspaces and no analyzer internals.
+  Its DLL is packed into the `Exceptionable.Analyzers` package under
+  `analyzers/dotnet/cs`, so consumers install one analyzer package and
+  command-line builds never load Workspaces. The analyzer publishes the data
+  a fix needs as diagnostic properties (EXC003: `ExceptionType`).

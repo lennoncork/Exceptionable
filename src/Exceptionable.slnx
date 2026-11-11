@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Exceptionable.Analyzers.Tests/Exceptionable.Analyzers.Tests.csproj" />
+  <Project Path="Exceptionable.Analyzers.CodeFixes/Exceptionable.Analyzers.CodeFixes.csproj" />
   <Project Path="Exceptionable.Analyzers/Exceptionable.Analyzers.csproj" />
   <Project Path="Exceptionable/Exceptionable.csproj" />
 </Solution>

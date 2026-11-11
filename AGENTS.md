@@ -62,7 +62,10 @@ a task is split out of that file.
 │   │   ├── Contracts/
 │   │   ├── Analysis/
 │   │   ├── Diagnostics/
+│   │   ├── Polyfills/
 │   │   └── Generation/
+│   ├── Exceptionable.Analyzers.CodeFixes/
+│   │   └── # Code fix providers; packed into the analyzer package
 │   └── Exceptionable.Analyzers.Tests/
 │       └── # Analyzer tests
 ├── build.cake
@@ -82,7 +85,8 @@ a task is split out of that file.
   analyzer's `Contracts/` area; keep exception-flow and catch/propagation
   analysis in `Analysis/`; centralize rule descriptors and diagnostic
   reporting in `Diagnostics/`. Keep the inferred-throws generator and its
-  assembly-metadata marker in `Generation/`. Resolve compilation-specific
+  assembly-metadata marker in `Generation/`. Keep curated external-API
+  exception information in `Polyfills/`, one module per namespace. Resolve compilation-specific
   symbols per compilation and never retain them across compilations.
 - Keep the attributes tests independent from analyzer tests. Analyzer tests
   should compile representative snippets and verify positive and negative
@@ -110,6 +114,14 @@ a task is split out of that file.
   `dotnet_diagnostic` settings control rule severity only after it is enabled.
   Nullable analysis is the primary precedent, not a substitute for Exceptionable
   semantics.
-- Do not add a separate code-fix project or other components until the design
-  calls for them. Confirm still-open framework, Roslyn, and diagnostic-ID
+- Keep code fix providers in `Exceptionable.Analyzers.CodeFixes`. It does not
+  reference the analyzer assembly, so repeat the diagnostic IDs and diagnostic
+  property keys it needs in `ExceptionableDiagnosticIds`, and have the analyzer
+  publish any data a fix needs as diagnostic properties. It is not a separate
+  NuGet package: the `Exceptionable.Analyzers` project packs its DLL into
+  `analyzers/dotnet/cs`. Test fixes in `Exceptionable.Analyzers.Tests` with
+  `.testcase.cs` input and expected fixtures. A fix must be safe: never
+  generate a catch that suppresses an exception, and offer no fix that would
+  contradict `[DoesNotThrow]`.
+- Do not add other components until the design calls for them. Confirm still-open framework, Roslyn, and diagnostic-ID
   choices in `DESIGN.md` before treating them as repository-wide conventions.
