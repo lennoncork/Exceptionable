@@ -5,7 +5,7 @@ namespace Exceptionable.Analyzers.Tests
 {
     public class ExceptionTypeResolverTests
     {
-        private static readonly string source = ExceptionableAnalyzerTests.GetTestCase("ExceptionTypeResolverTests.SharedTypes.Source1");
+        private static readonly string source = AnalyzerTestHarness.GetTestCase("ExceptionTypeResolverTests.SharedTypes.Source1");
 
         [Test]
         public void ResolveExceptionType_ResolvesFullyQualifiedAndUniqueShortNames()

@@ -10,7 +10,7 @@ namespace Exceptionable.Analyzers.Contracts
     internal sealed class ContractResolver
     {
         private readonly ExceptionTypeResolver exceptionTypeResolver;
-        private readonly Func<IMethodSymbol, ImmutableArray<INamedTypeSymbol>>? implicitDeclaredTypes;
+        private readonly IImplicitContractSource? implicitContracts;
         private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> declaredContracts =
             new(SymbolEqualityComparer.Default);
         private readonly ConcurrentDictionary<IMethodSymbol, ExceptionContract> effectiveContracts =
@@ -22,10 +22,10 @@ namespace Exceptionable.Analyzers.Contracts
 
         internal ContractResolver(
             ExceptionTypeResolver exceptionTypeResolver,
-            Func<IMethodSymbol, ImmutableArray<INamedTypeSymbol>>? implicitDeclaredTypes = null)
+            IImplicitContractSource? implicitContracts = null)
         {
             this.exceptionTypeResolver = exceptionTypeResolver;
-            this.implicitDeclaredTypes = implicitDeclaredTypes;
+            this.implicitContracts = implicitContracts;
         }
 
         internal ExceptionContract GetDeclaredContract(IMethodSymbol method) =>
@@ -104,12 +104,12 @@ namespace Exceptionable.Analyzers.Contracts
         private ExceptionContract includeImplicit(IMethodSymbol method, ExceptionContract contract)
         {
             // An explicit [Throws] or [DoesNotThrow] contract replaces inferred throws.
-            if (this.implicitDeclaredTypes is null || contract.HasContract)
+            if (this.implicitContracts is null || contract.HasContract)
             {
                 return contract;
             }
 
-            ImmutableArray<INamedTypeSymbol> implicitTypes = this.implicitDeclaredTypes(method);
+            ImmutableArray<INamedTypeSymbol> implicitTypes = this.implicitContracts.GetImplicitDeclaredTypes(method);
             return implicitTypes.IsEmpty
                 ? contract
                 : new ExceptionContract(false, implicitTypes);

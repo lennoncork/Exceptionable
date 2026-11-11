@@ -8,8 +8,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void DeclaredThrows_ChangedException_ReportsExc002AndExc008()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(nameof(DeclaredThrows_ChangedException_ReportsExc002AndExc008)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DeclaredThrows_ChangedException_ReportsExc002AndExc008)));
 
             Diagnostic mismatch = diagnostics.Single(item => item.Id == "EXC002");
             Assert.That(mismatch.GetMessage(), Does.Contain("System.InvalidOperationException"));
@@ -24,8 +24,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void DeclaredThrows_OneOfTwoBecomesUnused_ReportsExc008()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(nameof(DeclaredThrows_OneOfTwoBecomesUnused_ReportsExc008)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DeclaredThrows_OneOfTwoBecomesUnused_ReportsExc008)));
 
             Diagnostic unused = diagnostics.Single(item => item.Id == "EXC008");
             Assert.That(unused.GetMessage(), Does.Contain("System.IO.IOException"));
@@ -35,8 +35,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void DeclaredThrows_DerivedThrow_DoesNotReportExc008()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(nameof(DeclaredThrows_DerivedThrow_DoesNotReportExc008)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DeclaredThrows_DerivedThrow_DoesNotReportExc008)));
 
             Assert.That(diagnostics, Is.Empty);
         }
@@ -44,8 +44,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void DeclaredThrows_EmptyBody_DoesNotReportExc008()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(nameof(DeclaredThrows_EmptyBody_DoesNotReportExc008)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DeclaredThrows_EmptyBody_DoesNotReportExc008)));
 
             Assert.That(diagnostics, Is.Empty);
         }
@@ -53,8 +53,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void DeclaredThrows_PropagatedCall_DoesNotReportExc008()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(nameof(DeclaredThrows_PropagatedCall_DoesNotReportExc008)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DeclaredThrows_PropagatedCall_DoesNotReportExc008)));
 
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC008"));
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));

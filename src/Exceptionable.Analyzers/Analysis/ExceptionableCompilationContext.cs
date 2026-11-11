@@ -21,10 +21,10 @@ namespace Exceptionable.Analyzers.Analysis
             this.Polyfills = new PolyfillResolver(compilation, PolyfillCatalog.Modules);
             this.ExceptionTypeResolver = new ExceptionTypeResolver(compilation);
             this.Reachability = new ReachabilityAnalysis();
-            this.InferredThrows = new InferredThrowAnalysis(compilation, this.Reachability);
+            this.InferredThrows = new InferredThrowAnalysis(compilation, this.Reachability, this.ExceptionTypeResolver, this.IsSupportedMethod);
             this.ContractResolver = new ContractResolver(
                 this.ExceptionTypeResolver,
-                this.InferredThrows.GetImplicitDeclaredTypes);
+                this.InferredThrows);
         }
 
         internal bool IsSupportedMethod(IMethodSymbol method) =>

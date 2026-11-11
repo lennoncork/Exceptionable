@@ -10,9 +10,26 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class CallContractAnalysis
+    internal sealed class CallContractAnalysis : IOperationRule
     {
-        internal static void Analyze(
+        public ImmutableArray<OperationKind> Kinds { get; } =
+        [
+            OperationKind.Invocation,
+            OperationKind.ObjectCreation,
+            OperationKind.PropertyReference,
+            OperationKind.EventAssignment,
+            OperationKind.Binary,
+            OperationKind.Unary,
+            OperationKind.Increment,
+            OperationKind.Decrement,
+            OperationKind.Conversion,
+            OperationKind.Loop,
+            OperationKind.Using,
+            OperationKind.UsingDeclaration,
+            OperationKind.DeconstructionAssignment,
+        ];
+
+        public void Analyze(
             OperationAnalysisContext operationContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -39,7 +56,7 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
+            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetMethods(operationContext.ContainingSymbol)
                 .Where(compilationContext.IsSupportedMethod)
                 .Where(host => compilationContext.Reachability.IsReachable(operation))];
             if (hosts.Length == 0)
@@ -71,10 +88,8 @@ namespace Exceptionable.Analyzers.Analysis
                         continue;
                     }
 
-                    operationContext.ReportDiagnostic(Diagnostic.Create(
-                        ExceptionableDiagnostics.CallerViolation,
+                    operationContext.ReportDiagnostic(DiagnosticFactory.CallerViolation(
                         getReportLocation(operation),
-                        ImmutableDictionary<string, string?>.Empty.Add("ExceptionType", declaredType.GetExceptionDisplayName()),
                         targetMethod.GetContractDisplayName(),
                         declaredType.GetExceptionDisplayName()));
                 }

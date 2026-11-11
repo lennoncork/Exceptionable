@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class ConstructorHost
+    internal static class ExecutableHostResolver
     {
         internal static ImmutableArray<IMethodSymbol> GetMethods(ISymbol symbol)
         {

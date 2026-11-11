@@ -10,7 +10,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsSupportedMethod_ExcludesAsyncAndIteratorMethods()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsSupportedMethod_ExcludesAsyncAndIteratorMethods.Source1");
+            string source = AnalyzerTestHarness.GetTestCase("IsSupportedMethod_ExcludesAsyncAndIteratorMethods.Source1");
             CSharpCompilation compilation = TestCompilation.Create(source);
 
             Assert.That(MethodAnalysisPolicy.IsSupportedMethod(
@@ -34,7 +34,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsDeferredReturnType_RecognizesStandardDeferredTypesOnly()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsDeferredReturnType_RecognizesStandardDeferredTypesOnly.Source2");
+            string source = AnalyzerTestHarness.GetTestCase("IsDeferredReturnType_RecognizesStandardDeferredTypesOnly.Source2");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IMethodSymbol[] methods =
             [

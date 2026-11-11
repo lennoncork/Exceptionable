@@ -1,8 +1,10 @@
+using System.Collections.Immutable;
+
 namespace Exceptionable.Analyzers.Polyfills
 {
     internal static class PolyfillCatalog
     {
-        internal static PolyfillModule[] Modules { get; } =
+        internal static ImmutableArray<PolyfillModule> Modules { get; } =
         [
             new SystemPolyfills(),
             new SystemCollectionsGenericPolyfills(),

@@ -688,12 +688,18 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 interface precedence. Resolved names, declared contracts, and effective
 contracts are cached for the compilation.
 `Analysis/` contains separate declaration, throw, call, unnecessary-catch,
-and interface-contract-match handlers, plus exception-flow, operation-target,
-method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis` scans
-source for the defining compilation and reads generated metadata for a method
-that has no declaring syntax.
-`Generation/` contains the incremental generator that writes that metadata
-and the marker used to recognize it. The generator lives in the analyzer
+and interface-contract-match rules, each implementing `IOperationRule` or
+`ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
+method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis`
+scans source for the defining compilation, delegating nullable-guard detection
+to `NullableGuardDetector` and operation enumeration to `MemberOperationEnumerator`.
+It implements `IImplicitContractSource`, which `ContractResolver` consumes. The
+metadata marker and `RecordedThrowsReader` live in `Contracts/`, so `Analysis/`
+reads recorded throws without depending on `Generation/`.
+`Generation/` contains the incremental generator that writes that metadata.
+Its pipeline emits equatable `InferredThrowEntry` values per throw site so
+unchanged files keep the output cached, and `InferredThrowsPlanner` decides
+which members record throws. The generator lives in the analyzer
 assembly so the NuGet `analyzers/dotnet/cs` asset loads it with the analyzer.
 It does not add a public attribute to the Exceptionable package.
 `Polyfills/` contains one `PolyfillModule` per namespace, the
@@ -701,7 +707,7 @@ It does not add a public attribute to the Exceptionable package.
 `PolyfillResolver` that maps a method to exception symbols.
 `CallContractAnalysis` consults it only for a method without an explicit or
 inferred contract, after `AnalysisOptions.IsPolyfillEnabled` allows it.
-`Diagnostics/` owns the descriptors. Keep rule handlers focused on one
+`Diagnostics/` owns the descriptors and `DiagnosticFactory`, which defines each rule's message arguments and diagnostic properties. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
 

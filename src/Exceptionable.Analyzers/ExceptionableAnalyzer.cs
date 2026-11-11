@@ -12,6 +12,20 @@ namespace Exceptionable.Analyzers
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public sealed class ExceptionableAnalyzer : DiagnosticAnalyzer
     {
+        private static readonly IOperationRule[] operationRules =
+        [
+            new ThrowContractAnalysis(),
+            new CallContractAnalysis(),
+            new UnnecessaryCatchAnalysis(),
+        ];
+
+        private static readonly ISymbolRule[] symbolRules =
+        [
+            new ContractDeclarationAnalysis(),
+            new UnusedDeclaredExceptionAnalysis(),
+            new InterfaceContractMatchAnalysis(),
+        ];
+
         /// <inheritdoc />
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ExceptionableDiagnostics.SupportedDiagnostics;
@@ -28,36 +42,21 @@ namespace Exceptionable.Analyzers
                     startContext.Compilation,
                     startContext.Options.AnalyzerConfigOptionsProvider);
 
-                startContext.RegisterOperationAction(
-                    operationContext => ThrowContractAnalysis.Analyze(operationContext, compilationContext),
-                    OperationKind.Throw);
-
-                startContext.RegisterOperationAction(
-                    operationContext => CallContractAnalysis.Analyze(operationContext, compilationContext),
-                    OperationKind.Invocation,
-                    OperationKind.ObjectCreation,
-                    OperationKind.PropertyReference,
-                    OperationKind.EventAssignment,
-                    OperationKind.Binary,
-                    OperationKind.Unary,
-                    OperationKind.Increment,
-                    OperationKind.Decrement,
-                    OperationKind.Conversion,
-                    OperationKind.Loop,
-                    OperationKind.Using,
-                    OperationKind.UsingDeclaration,
-                    OperationKind.DeconstructionAssignment);
-
-                startContext.RegisterOperationAction(
-                    operationContext => UnnecessaryCatchAnalysis.Analyze(operationContext, compilationContext),
-                    OperationKind.Try);
+                foreach (IOperationRule rule in operationRules)
+                {
+                    IOperationRule current = rule;
+                    startContext.RegisterOperationAction(
+                        operationContext => current.Analyze(operationContext, compilationContext),
+                        current.Kinds);
+                }
 
                 startContext.RegisterSymbolAction(
                     symbolContext =>
                     {
-                        ContractDeclarationAnalysis.Analyze(symbolContext, compilationContext);
-                        UnusedDeclaredExceptionAnalysis.Analyze(symbolContext, compilationContext);
-                        InterfaceContractMatchAnalysis.Analyze(symbolContext, compilationContext);
+                        foreach (ISymbolRule rule in symbolRules)
+                        {
+                            rule.Analyze(symbolContext, compilationContext);
+                        }
                     },
                     SymbolKind.Method,
                     SymbolKind.NamedType,

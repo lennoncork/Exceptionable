@@ -11,7 +11,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void TryGetThrowsName_TrimsValidAttributeNames()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsName_TrimsValidAttributeNames.Source1");
+            string source = AnalyzerTestHarness.GetTestCase("TryGetThrowsName_TrimsValidAttributeNames.Source1");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -23,7 +23,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void TryGetThrowsName_RejectsWhitespaceOnlyValues()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsName_RejectsWhitespaceOnlyValues.Source2");
+            string source = AnalyzerTestHarness.GetTestCase("TryGetThrowsName_RejectsWhitespaceOnlyValues.Source2");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -34,7 +34,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsDoesNotThrow_RecognizesTheExceptionableAttribute()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsDoesNotThrow_RecognizesTheExceptionableAttribute.Source3");
+            string source = AnalyzerTestHarness.GetTestCase("IsDoesNotThrow_RecognizesTheExceptionableAttribute.Source3");
             var compilation = TestCompilation.Create(source);
             var attribute = compilation.GetTypeByMetadataName("C")!.GetAttributes().Single();
 
@@ -44,7 +44,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void TryGetThrowsType_ReadsTheExceptionTypeArgument()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("TryGetThrowsType_ReadsTheExceptionTypeArgument.Source4");
+            string source = AnalyzerTestHarness.GetTestCase("TryGetThrowsType_ReadsTheExceptionTypeArgument.Source4");
             CSharpCompilation compilation = TestCompilation.Create(source);
             AttributeData attribute = compilation.GetTypeByMetadataName("C")!
                 .GetMembers("M")
@@ -62,7 +62,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsThrows_IgnoresAGenericAttributeInAnotherNamespace()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsThrows_IgnoresAGenericAttributeInAnotherNamespace.Source5");
+            string source = AnalyzerTestHarness.GetTestCase("IsThrows_IgnoresAGenericAttributeInAnotherNamespace.Source5");
             CSharpCompilation compilation = TestCompilation.Create(source);
             AttributeData attribute = compilation.GetTypeByMetadataName("C")!
                 .GetMembers("M")
@@ -86,7 +86,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GenericThrowsAttribute_RejectsANonExceptionTypeArgument()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("GenericThrowsAttribute_RejectsANonExceptionTypeArgument.Source6");
+            string source = AnalyzerTestHarness.GetTestCase("GenericThrowsAttribute_RejectsANonExceptionTypeArgument.Source6");
             MetadataReference[] references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
                 .Split(System.IO.Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path))

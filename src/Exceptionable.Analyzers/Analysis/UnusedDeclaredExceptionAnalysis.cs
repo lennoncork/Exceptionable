@@ -8,9 +8,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class UnusedDeclaredExceptionAnalysis
+    internal sealed class UnusedDeclaredExceptionAnalysis : ISymbolRule
     {
-        internal static void Analyze(
+        public void Analyze(
             SymbolAnalysisContext symbolContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -125,7 +125,8 @@ namespace Exceptionable.Analyzers.Analysis
             {
                 foreach (INamedTypeSymbol exceptionType in compilationContext.InferredThrows.GetObservedEscapingTypes(
                     method,
-                    compilationContext.ContractResolver))
+                    compilationContext.ContractResolver,
+                    symbolContext.CancellationToken))
                 {
                     if (!observed.Exists(existing => SymbolEqualityComparer.Default.Equals(existing, exceptionType)))
                     {
@@ -154,8 +155,7 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                symbolContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.UnusedDeclaredException,
+                symbolContext.ReportDiagnostic(DiagnosticFactory.UnusedDeclaredException(
                     reference.GetSyntax().GetLocation(),
                     declared.GetExceptionDisplayName(),
                     describe(owner)));

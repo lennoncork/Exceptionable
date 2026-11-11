@@ -7,9 +7,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class ContractDeclarationAnalysis
+    internal sealed class ContractDeclarationAnalysis : ISymbolRule
     {
-        internal static void Analyze(
+        public void Analyze(
             SymbolAnalysisContext symbolContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -39,8 +39,7 @@ namespace Exceptionable.Analyzers.Analysis
                         compilationContext.Options.IsEnabled(reference.SyntaxTree));
                 if (attributeReference is not null)
                 {
-                    symbolContext.ReportDiagnostic(Diagnostic.Create(
-                        ExceptionableDiagnostics.ConflictingContracts,
+                    symbolContext.ReportDiagnostic(DiagnosticFactory.ConflictingContracts(
                         attributeReference.GetSyntax().GetLocation()));
                 }
             }
@@ -102,8 +101,7 @@ namespace Exceptionable.Analyzers.Analysis
             string typeName,
             string reason)
         {
-            symbolContext.ReportDiagnostic(Diagnostic.Create(
-                ExceptionableDiagnostics.ThrowsUsage,
+            symbolContext.ReportDiagnostic(DiagnosticFactory.ThrowsUsage(
                 attributeReference.GetSyntax().GetLocation(),
                 typeName,
                 reason));
