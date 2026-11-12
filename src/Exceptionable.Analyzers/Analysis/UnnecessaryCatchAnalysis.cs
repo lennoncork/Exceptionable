@@ -11,9 +11,14 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class UnnecessaryCatchAnalysis
+    internal sealed class UnnecessaryCatchAnalysis : IOperationRule
     {
-        internal static void Analyze(
+        public ImmutableArray<OperationKind> Kinds { get; } =
+        [
+            OperationKind.Try,
+        ];
+
+        public void Analyze(
             OperationAnalysisContext operationContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -36,8 +41,7 @@ namespace Exceptionable.Analyzers.Analysis
             Location location = tryOperation.Syntax is TryStatementSyntax trySyntax
                 ? trySyntax.TryKeyword.GetLocation()
                 : tryOperation.Syntax.GetLocation();
-            operationContext.ReportDiagnostic(Diagnostic.Create(
-                ExceptionableDiagnostics.UnnecessaryTryCatch,
+            operationContext.ReportDiagnostic(DiagnosticFactory.UnnecessaryTryCatch(
                 location,
                 describeTargets(names)));
         }

@@ -75,8 +75,8 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void ReadAllText_AnalysisDisabledSuppressesPolyfill()
         {
-            Diagnostic[] diagnostics = ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase("Polyfill_FileReadAllText"),
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase("Polyfill_FileReadAllText"),
                 fileSetting: "disable",
                 additionalOptions: new Dictionary<string, string> { ["exceptionable_polyfill"] = "enable" });
 
@@ -126,8 +126,8 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         private static Diagnostic[] getDiagnostics(string testCase, params (string Key, string Value)[] options) =>
-            ExceptionableAnalyzerTests.GetDiagnostics(
-                ExceptionableAnalyzerTests.GetTestCase(testCase),
+            AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(testCase),
                 additionalOptions: options.ToDictionary(option => option.Key, option => option.Value));
     }
 }

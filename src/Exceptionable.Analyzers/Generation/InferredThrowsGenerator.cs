@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Text;
-using Exceptionable.Analyzers.Analysis;
 using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -21,46 +20,40 @@ namespace Exceptionable.Analyzers.Generation
         /// <inheritdoc />
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            IncrementalValuesProvider<ISymbol?> symbols = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => node is ThrowStatementSyntax or ThrowExpressionSyntax,
-                static (syntaxContext, cancellationToken) =>
-                    syntaxContext.SemanticModel.GetEnclosingSymbol(syntaxContext.Node.SpanStart, cancellationToken));
-            IncrementalValueProvider<(Compilation Compilation, ImmutableArray<ISymbol?> Symbols)> combined =
-                context.CompilationProvider.Combine(symbols.Collect());
-            context.RegisterSourceOutput(combined, static (production, source) =>
-                emit(production, source.Compilation, source.Symbols));
+            // Collect throw sites first. Planning then deduplicates the expanded members and
+            // analyzes each method or initializer-running constructor once per compilation.
+            IncrementalValuesProvider<SyntaxNode> throwSites = context.SyntaxProvider.CreateSyntaxProvider(
+                    static (node, _) => node is ThrowStatementSyntax or ThrowExpressionSyntax,
+                    static (syntaxContext, _) => syntaxContext.Node)
+                .WithTrackingName("InferredThrows.ThrowSites");
+            IncrementalValueProvider<ImmutableArray<InferredThrowEntry>> entries = throwSites
+                .Collect()
+                .Combine(context.CompilationProvider)
+                .Select(static (source, cancellationToken) => InferredThrowsPlanner.GetEntries(
+                    source.Left,
+                    source.Right,
+                    cancellationToken))
+                .WithComparer(InferredThrowEntrySetComparer.Instance)
+                .WithTrackingName("InferredThrows.Plan");
+            IncrementalValueProvider<string> attributeName = context.CompilationProvider
+                .Select(static (compilation, _) => getAttributeName(compilation));
+            context.RegisterSourceOutput(
+                entries.Combine(attributeName),
+                static (production, source) => emit(production, source.Left, source.Right));
         }
 
         private static void emit(
             SourceProductionContext production,
-            Compilation compilation,
-            ImmutableArray<ISymbol?> symbols)
+            ImmutableArray<InferredThrowEntry> collected,
+            string attributeName)
         {
-            var analysis = new InferredThrowAnalysis(compilation, new ReachabilityAnalysis());
-            var contracts = new ContractResolver(new ExceptionTypeResolver(compilation));
-            var seen = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
             var entries = new List<(string MemberId, string ExceptionType)>();
-            foreach (ISymbol? symbol in symbols)
+            var seen = new HashSet<InferredThrowEntry>();
+            foreach (InferredThrowEntry entry in collected)
             {
-                foreach (IMethodSymbol method in expand(symbol))
+                if (seen.Add(entry))
                 {
-                    if (!seen.Add(method) ||
-                        !isExternallyConsumable(method, compilation) ||
-                        contracts.GetEffectiveContract(method).HasContract)
-                    {
-                        continue;
-                    }
-
-                    string? memberId = method.GetDocumentationCommentId();
-                    if (memberId is null)
-                    {
-                        continue;
-                    }
-
-                    foreach (INamedTypeSymbol exceptionType in analysis.GetImplicitDeclaredTypes(method))
-                    {
-                        entries.Add((memberId, InferredThrowsMetadata.GetExceptionTypeName(exceptionType)));
-                    }
+                    entries.Add((entry.MemberId, entry.ExceptionType));
                 }
             }
 
@@ -69,7 +62,6 @@ namespace Exceptionable.Analyzers.Generation
                 return;
             }
 
-            string attributeName = getAttributeName(compilation);
             entries.Sort(static (left, right) =>
             {
                 int member = string.CompareOrdinal(left.MemberId, right.MemberId);
@@ -85,49 +77,6 @@ namespace Exceptionable.Analyzers.Generation
                 SourceText.From(renderApplications(entries, attributeName), Encoding.UTF8));
         }
 
-        private static bool isExternallyConsumable(IMethodSymbol method, Compilation compilation)
-        {
-            bool hasFriendAssembly = hasInternalsVisibleTo(compilation.Assembly);
-            if (isPrivate(method.DeclaredAccessibility) ||
-                requiresFriend(method.DeclaredAccessibility) && !hasFriendAssembly)
-            {
-                return false;
-            }
-
-            for (INamedTypeSymbol? type = method.ContainingType; type is not null; type = type.ContainingType)
-            {
-                if (isPrivate(type.DeclaredAccessibility) ||
-                    requiresFriend(type.DeclaredAccessibility) && !hasFriendAssembly)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static bool isPrivate(Accessibility accessibility) =>
-            accessibility == Accessibility.Private;
-
-        private static bool requiresFriend(Accessibility accessibility) =>
-            accessibility is Accessibility.Internal or Accessibility.ProtectedAndInternal;
-
-        private static bool hasInternalsVisibleTo(IAssemblySymbol assembly)
-        {
-            foreach (AttributeData attribute in assembly.GetAttributes())
-            {
-                if (attribute.AttributeClass?.ToDisplayString() ==
-                        "System.Runtime.CompilerServices.InternalsVisibleToAttribute" &&
-                    attribute.ConstructorArguments.Length > 0 &&
-                    attribute.ConstructorArguments[0].Value is string)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static string getAttributeName(Compilation compilation)
         {
             string name = InferredThrowsMetadata.AttributeName;
@@ -140,52 +89,6 @@ namespace Exceptionable.Analyzers.Generation
             }
 
             return name;
-        }
-
-        private static IEnumerable<IMethodSymbol> expand(ISymbol? symbol)
-        {
-            switch (symbol)
-            {
-                case IMethodSymbol method:
-                    yield return method;
-                    yield break;
-                case IFieldSymbol field:
-                    foreach (IMethodSymbol constructor in initializers(field.ContainingType, field.IsStatic))
-                    {
-                        yield return constructor;
-                    }
-
-                    yield break;
-                case IPropertySymbol property:
-                    if (property.GetMethod is not null)
-                    {
-                        yield return property.GetMethod;
-                    }
-
-                    if (property.SetMethod is not null)
-                    {
-                        yield return property.SetMethod;
-                    }
-
-                    foreach (IMethodSymbol constructor in initializers(property.ContainingType, property.IsStatic))
-                    {
-                        yield return constructor;
-                    }
-
-                    yield break;
-            }
-        }
-
-        private static IEnumerable<IMethodSymbol> initializers(INamedTypeSymbol type, bool isStatic)
-        {
-            ImmutableArray<IMethodSymbol> constructors = isStatic ? type.StaticConstructors : type.Constructors;
-            foreach (IMethodSymbol constructor in constructors)
-            {
-                if (ConstructorHost.RunsInitializers(constructor))
-                {
-                    yield return constructor;
-                }
-            }
         }
 
         private const string attributeDefinition = """

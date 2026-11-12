@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -6,24 +7,33 @@ namespace Exceptionable.Analyzers.Configuration
 {
     internal sealed class AnalysisOptions
     {
+        internal const string AnalysisKey = "exceptionable_analysis";
+        internal const string AnalysisProperty = "build_property.Exceptionable";
+        internal const string PolyfillKey = "exceptionable_polyfill";
+        internal const string PolyfillProperty = "build_property.ExceptionablePolyfills";
+
         private readonly AnalyzerConfigOptionsProvider optionsProvider;
+        private readonly ConcurrentDictionary<SyntaxTree, bool> enabledByTree = new();
 
         internal AnalysisOptions(AnalyzerConfigOptionsProvider optionsProvider)
         {
             this.optionsProvider = optionsProvider;
         }
 
-        internal bool IsEnabled(SyntaxTree tree)
+        internal bool IsEnabled(SyntaxTree tree) =>
+            this.enabledByTree.GetOrAdd(tree, this.resolveEnabled);
+
+        private bool resolveEnabled(SyntaxTree tree)
         {
             AnalyzerConfigOptions treeOptions = this.optionsProvider.GetOptions(tree);
-            if (treeOptions.TryGetValue("exceptionable_analysis", out var treeValue) &&
+            if (treeOptions.TryGetValue(AnalysisKey, out var treeValue) &&
                 tryParse(treeValue, out var treeEnabled))
             {
                 return treeEnabled;
             }
 
             return this.optionsProvider.GlobalOptions.TryGetValue(
-                    "build_property.Exceptionable",
+                    AnalysisProperty,
                     out var globalValue) &&
                 string.Equals(globalValue, "enable", StringComparison.OrdinalIgnoreCase);
         }
@@ -39,21 +49,21 @@ namespace Exceptionable.Analyzers.Configuration
             AnalyzerConfigOptions treeOptions = this.optionsProvider.GetOptions(tree);
             for (string? scope = @namespace; !string.IsNullOrEmpty(scope); scope = getParentNamespace(scope!))
             {
-                if (treeOptions.TryGetValue("exceptionable_polyfill." + scope, out var scopedValue) &&
+                if (treeOptions.TryGetValue(PolyfillKey + "." + scope, out var scopedValue) &&
                     tryParse(scopedValue, out var scopedEnabled))
                 {
                     return scopedEnabled;
                 }
             }
 
-            if (treeOptions.TryGetValue("exceptionable_polyfill", out var treeValue) &&
+            if (treeOptions.TryGetValue(PolyfillKey, out var treeValue) &&
                 tryParse(treeValue, out var treeEnabled))
             {
                 return treeEnabled;
             }
 
             return !this.optionsProvider.GlobalOptions.TryGetValue(
-                    "build_property.ExceptionablePolyfills",
+                    PolyfillProperty,
                     out var globalValue) ||
                 !string.Equals(globalValue, "disable", StringComparison.OrdinalIgnoreCase);
         }

@@ -14,10 +14,26 @@ namespace Exceptionable.Analyzers.Tests
     public class CodeFixTests
     {
         [Test]
+        public void DuplicatedDiagnosticContract_MatchesAnalyzer()
+        {
+            System.Type ids = typeof(RemoveStaleThrowsCodeFixProvider).Assembly
+                .GetType("Exceptionable.Analyzers.CodeFixes.ExceptionableDiagnosticIds")!;
+            string read(string name) => (string)ids.GetField(
+                name,
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetRawConstantValue()!;
+
+            Assert.That(read("CallerViolation"), Is.EqualTo(Diagnostics.ExceptionableDiagnostics.CallerViolation.Id));
+            Assert.That(
+                read("UnusedDeclaredException"),
+                Is.EqualTo(Diagnostics.ExceptionableDiagnostics.UnusedDeclaredException.Id));
+            Assert.That(read("ExceptionTypeProperty"), Is.EqualTo(Diagnostics.DiagnosticFactory.ExceptionTypeProperty));
+        }
+
+        [Test]
         public void Exc008_RemovesStaleAttribute()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("CodeFix_Exc008_Input");
-            string expected = ExceptionableAnalyzerTests.GetTestCase("CodeFix_Exc008_Expected");
+            string source = AnalyzerTestHarness.GetTestCase("CodeFix_Exc008_Input");
+            string expected = AnalyzerTestHarness.GetTestCase("CodeFix_Exc008_Expected");
 
             string[] results = applyFixes(source, new RemoveStaleThrowsCodeFixProvider(), "EXC008");
 
@@ -28,7 +44,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void Exc003_AddsThrowsForEachReportedException()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("CodeFix_Exc003_Input");
+            string source = AnalyzerTestHarness.GetTestCase("CodeFix_Exc003_Input");
 
             string[] results = applyFixes(source, new AddThrowsCodeFixProvider(), "EXC003");
 
@@ -41,7 +57,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void Exc003_OffersNoFixWhenMemberDoesNotThrow()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("CodeFix_Exc003_DoesNotThrow");
+            string source = AnalyzerTestHarness.GetTestCase("CodeFix_Exc003_DoesNotThrow");
 
             Assert.That(applyFixes(source, new AddThrowsCodeFixProvider(), "EXC003"), Is.Empty);
         }

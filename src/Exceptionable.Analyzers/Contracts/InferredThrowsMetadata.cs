@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
 
-namespace Exceptionable.Analyzers.Generation
+namespace Exceptionable.Analyzers.Contracts
 {
     internal static class InferredThrowsMetadata
     {

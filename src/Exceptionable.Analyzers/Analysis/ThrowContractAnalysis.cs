@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Linq;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
@@ -7,9 +8,14 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class ThrowContractAnalysis
+    internal sealed class ThrowContractAnalysis : IOperationRule
     {
-        internal static void Analyze(
+        public ImmutableArray<OperationKind> Kinds { get; } =
+        [
+            OperationKind.Throw,
+        ];
+
+        public void Analyze(
             OperationAnalysisContext operationContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -20,28 +26,20 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            IMethodSymbol[] hosts = [.. ConstructorHost.GetMethods(operationContext.ContainingSymbol)
-                .Where(compilationContext.IsSupportedMethod)
-                .Where(host => compilationContext.Reachability.IsReachable(throwOperation))];
+            if (!compilationContext.Reachability.IsReachable(throwOperation))
+            {
+                return;
+            }
+
+            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetMethods(operationContext.ContainingSymbol)
+                .Where(compilationContext.IsSupportedMethod)];
             if (hosts.Length == 0)
             {
                 return;
             }
 
-            ITypeSymbol? exceptionType = throwOperation.Exception is null
-                ? null
-                : ExceptionFlowAnalysis.GetThrownExceptionType(
-                    throwOperation.Exception,
-                    compilationContext.Compilation);
-            exceptionType ??= ExceptionFlowAnalysis.GetRethrownExceptionType(
-                    throwOperation,
-                    compilationContext.Compilation);
-
-            INamedTypeSymbol? exceptionBaseType = compilationContext.Compilation.GetTypeByMetadataName("System.Exception");
-            if (exceptionType is null ||
-                exceptionBaseType is null ||
-                !exceptionType.InheritsOrEquals(exceptionBaseType) ||
-                ExceptionFlowAnalysis.IsCaught(throwOperation, exceptionType))
+            ITypeSymbol? exceptionType = compilationContext.InferredThrows.GetEscapingExceptionType(throwOperation);
+            if (exceptionType is null)
             {
                 return;
             }
@@ -52,8 +50,7 @@ namespace Exceptionable.Analyzers.Analysis
             {
                 IMethodSymbol constructor = hosts.First(host =>
                     host.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor);
-                operationContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.RedundantArgumentNullException,
+                operationContext.ReportDiagnostic(DiagnosticFactory.RedundantArgumentNullException(
                     throwOperation.Syntax.GetLocation(),
                     constructor.GetContractDisplayName()));
             }
@@ -67,16 +64,14 @@ namespace Exceptionable.Analyzers.Analysis
 
             if (applicable.Any(contractResolver.IsEffectivelyDoesNotThrow))
             {
-                operationContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.DoesNotThrowEscapes,
+                operationContext.ReportDiagnostic(DiagnosticFactory.DoesNotThrowEscapes(
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.GetExceptionDisplayName()));
             }
             else if (!redundantArgumentNull &&
                 applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
             {
-                operationContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.ThrowsMismatch,
+                operationContext.ReportDiagnostic(DiagnosticFactory.ThrowsMismatch(
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.GetExceptionDisplayName()));
             }

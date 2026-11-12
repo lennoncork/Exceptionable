@@ -5,9 +5,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Exceptionable.Analyzers.Analysis
 {
-    internal static class InterfaceContractMatchAnalysis
+    internal sealed class InterfaceContractMatchAnalysis : ISymbolRule
     {
-        internal static void Analyze(
+        public void Analyze(
             SymbolAnalysisContext symbolContext,
             ExceptionableCompilationContext compilationContext)
         {
@@ -53,8 +53,7 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
-                symbolContext.ReportDiagnostic(Diagnostic.Create(
-                    ExceptionableDiagnostics.InterfaceContractMismatch,
+                symbolContext.ReportDiagnostic(DiagnosticFactory.InterfaceContractMismatch(
                     location,
                     method.GetQualifiedContractDisplayName(),
                     interfaceMember.GetQualifiedContractDisplayName()));

@@ -12,7 +12,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsCaught_CatchInEnclosingTryHandlesTheException()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsCaught_CatchInEnclosingTryHandlesTheException.Source1");
+            string source = AnalyzerTestHarness.GetTestCase("IsCaught_CatchInEnclosingTryHandlesTheException.Source1");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
             INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
@@ -23,7 +23,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsCaught_CatchDoesNotCatchAnExceptionThrownFromItsOwnHandler()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("IsCaught_CatchDoesNotCatchAnExceptionThrownFromItsOwnHandler.Source2");
+            string source = AnalyzerTestHarness.GetTestCase("IsCaught_CatchDoesNotCatchAnExceptionThrownFromItsOwnHandler.Source2");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
             INamedTypeSymbol exceptionType = compilation.GetTypeByMetadataName("System.InvalidOperationException")!;
@@ -34,7 +34,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetRethrownExceptionType_UsesCatchTypeAndCatchAllBaseType()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("GetRethrownExceptionType_UsesCatchTypeAndCatchAllBaseType.Source3");
+            string source = AnalyzerTestHarness.GetTestCase("GetRethrownExceptionType_UsesCatchTypeAndCatchAllBaseType.Source3");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation[] throws = [.. compilation.SyntaxTrees.Single().GetRoot().DescendantNodes()
                 .OfType<ThrowStatementSyntax>()
@@ -51,7 +51,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetThrownExceptionType_UsesThrownExpressionType()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("GetThrownExceptionType_UsesThrownExpressionType.Source4");
+            string source = AnalyzerTestHarness.GetTestCase("GetThrownExceptionType_UsesThrownExpressionType.Source4");
             CSharpCompilation compilation = TestCompilation.Create(source);
             IThrowOperation throwOperation = getThrowOperation(compilation);
 

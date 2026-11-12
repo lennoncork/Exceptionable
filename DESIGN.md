@@ -688,20 +688,31 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 interface precedence. Resolved names, declared contracts, and effective
 contracts are cached for the compilation.
 `Analysis/` contains separate declaration, throw, call, unnecessary-catch,
-and interface-contract-match handlers, plus exception-flow, operation-target,
-method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis` scans
-source for the defining compilation and reads generated metadata for a method
-that has no declaring syntax.
-`Generation/` contains the incremental generator that writes that metadata
-and the marker used to recognize it. The generator lives in the analyzer
-assembly so the NuGet `analyzers/dotnet/cs` asset loads it with the analyzer.
+and interface-contract-match rules, each implementing `IOperationRule` or
+`ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
+method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis`
+scans source for the defining compilation, delegating nullable-guard detection
+to `NullableGuardDetector` and operation enumeration to `MemberOperationEnumerator`.
+It implements `IImplicitContractSource`, which `ContractResolver` consumes. The
+metadata marker and `RecordedThrowsReader` live in `Contracts/`, so `Analysis/`
+reads recorded throws without depending on `Generation/`.
+`Generation/` contains the incremental generator that writes that metadata.
+Throw-site transforms only collect the throw syntax. `InferredThrowsPlanner`
+expands those sites to the enclosing method or accessor and to every
+constructor that runs a field or property initializer, deduplicates that set,
+and then creates the exception-type resolver, inferred-throw analysis, and
+contract resolver once for the compilation. Each member is therefore analyzed
+once, not once per throw. Equatable `InferredThrowEntry` values feed the
+output step, so an unchanged plan keeps the generated files cached. The
+generator lives in the analyzer assembly so the NuGet `analyzers/dotnet/cs`
+asset loads it with the analyzer.
 It does not add a public attribute to the Exceptionable package.
 `Polyfills/` contains one `PolyfillModule` per namespace, the
 `PolyfillCatalog` that registers them, and the per-compilation
 `PolyfillResolver` that maps a method to exception symbols.
 `CallContractAnalysis` consults it only for a method without an explicit or
 inferred contract, after `AnalysisOptions.IsPolyfillEnabled` allows it.
-`Diagnostics/` owns the descriptors. Keep rule handlers focused on one
+`Diagnostics/` owns the descriptors and `DiagnosticFactory`, which defines each rule's message arguments and diagnostic properties. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
 
@@ -755,13 +766,14 @@ Still open:
   Framework and third-party methods stay unspecified unless they declare
   `[Throws]` or an enabled polyfill describes them. Growing the polyfill
   catalog is ongoing, request-driven work.
-- Generator profiling used synthetic single-file compilations with 50, 250,
-  and 1,000 methods (two throw sites each), one warmup, and medians of three
-  runs. `RunGeneratorsAndUpdateCompilation` took 79/121/372 ms initially and
-  18/68/186 ms for a one-method throw-type edit. A per-member output prototype
-  did not improve edit times (17/105/310 ms), so it was not retained. The
-  compilation-wide callback remains; these synthetic results do not replace
-  profiling in a representative IDE project before a deeper pipeline redesign.
+- Generator output is still one compilation-wide pair of files. Planning now
+  deduplicates expanded members first and analyzes each method or constructor
+  once per compilation, instead of once per throw. Earlier measurements of the
+  per-throw pipeline (synthetic single-file compilations with 50, 250, and
+  1,000 methods, two throw sites each, one warmup, medians of three runs) were
+  79/121/372 ms initially and 18/68/186 ms for a one-method throw-type edit. A
+  per-member output prototype did not improve those edit times (17/105/310 ms),
+  so it was not retained. Re-profile before a further pipeline redesign.
 - Async/await and iterator contracts, before enabling rules for those
   constructs. The polyfill catalog covers only synchronous and blocking
   members until then (section 9). Override compatibility beyond the sealed and `base` cases also

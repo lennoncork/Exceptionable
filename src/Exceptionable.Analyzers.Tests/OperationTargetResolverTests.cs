@@ -11,7 +11,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetTargetMethods_ResolvesGetterSetterAndCompoundAccessors()
         {
-            string source = ExceptionableAnalyzerTests.GetTestCase("GetTargetMethods_ResolvesGetterSetterAndCompoundAccessors.Source1");
+            string source = AnalyzerTestHarness.GetTestCase("GetTargetMethods_ResolvesGetterSetterAndCompoundAccessors.Source1");
             var compilation = TestCompilation.Create(source);
             var syntaxTree = compilation.SyntaxTrees.Single();
             var semanticModel = compilation.GetSemanticModel(syntaxTree);

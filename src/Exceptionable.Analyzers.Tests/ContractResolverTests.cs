@@ -7,7 +7,7 @@ namespace Exceptionable.Analyzers.Tests
 {
     public class ContractResolverTests
     {
-        private static readonly string source = ExceptionableAnalyzerTests.GetTestCase("ContractResolverTests.SharedTypes.Source1");
+        private static readonly string source = AnalyzerTestHarness.GetTestCase("ContractResolverTests.SharedTypes.Source1");
 
         [Test]
         public void GetEffectiveContract_MethodDeclarationOverridesContainingTypeContract()
@@ -58,7 +58,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void IsExceptionPermitted_IntersectsMethodAndInterfaceContracts()
         {
-            string intersectionSource = ExceptionableAnalyzerTests.GetTestCase("IsExceptionPermitted_IntersectsMethodAndInterfaceContracts.Source2");
+            string intersectionSource = AnalyzerTestHarness.GetTestCase("IsExceptionPermitted_IntersectsMethodAndInterfaceContracts.Source2");
             CSharpCompilation compilation = TestCompilation.Create(intersectionSource);
             ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
             Microsoft.CodeAnalysis.IMethodSymbol method = TestCompilation.GetMethod(compilation, "Implementation", "Execute");
@@ -72,7 +72,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetEffectiveContract_PropertyAttributeAppliesToAccessorsUntilOverridden()
         {
-            string propertySource = ExceptionableAnalyzerTests.GetTestCase("GetEffectiveContract_PropertyAttributeAppliesToAccessorsUntilOverridden.Source3");
+            string propertySource = AnalyzerTestHarness.GetTestCase("GetEffectiveContract_PropertyAttributeAppliesToAccessorsUntilOverridden.Source3");
             CSharpCompilation compilation = TestCompilation.Create(propertySource);
             ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
 
@@ -92,7 +92,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetDirectContract_GenericThrowsContributesItsTypeArgument()
         {
-            string genericSource = ExceptionableAnalyzerTests.GetTestCase("GetDirectContract_GenericThrowsContributesItsTypeArgument.Source4");
+            string genericSource = AnalyzerTestHarness.GetTestCase("GetDirectContract_GenericThrowsContributesItsTypeArgument.Source4");
             CSharpCompilation compilation = TestCompilation.Create(genericSource);
             ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
             ExceptionContract contract = resolver.GetDirectContract(
@@ -106,7 +106,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetEffectiveContract_RedeclaredInterfaceMemberKeepsBaseContract()
         {
-            string redeclaredSource = ExceptionableAnalyzerTests.GetTestCase("GetEffectiveContract_RedeclaredInterfaceMemberKeepsBaseContract.Source5");
+            string redeclaredSource = AnalyzerTestHarness.GetTestCase("GetEffectiveContract_RedeclaredInterfaceMemberKeepsBaseContract.Source5");
             CSharpCompilation compilation = TestCompilation.Create(redeclaredSource);
             ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
 
@@ -122,7 +122,7 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetEffectiveContract_DisjointRedeclaredContractsAllowNothing()
         {
-            string disjointSource = ExceptionableAnalyzerTests.GetTestCase("GetEffectiveContract_DisjointRedeclaredContractsAllowNothing.Source6");
+            string disjointSource = AnalyzerTestHarness.GetTestCase("GetEffectiveContract_DisjointRedeclaredContractsAllowNothing.Source6");
             CSharpCompilation compilation = TestCompilation.Create(disjointSource);
             ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
             ExceptionContract contract = resolver.GetEffectiveContract(
@@ -134,15 +134,15 @@ namespace Exceptionable.Analyzers.Tests
         [Test]
         public void GetEffectiveContract_ExplicitContractReplacesInferredThrows()
         {
-            string implicitSource = ExceptionableAnalyzerTests.GetTestCase("GetEffectiveContract_ExplicitContractReplacesInferredThrows.Source7");
+            string implicitSource = AnalyzerTestHarness.GetTestCase("GetEffectiveContract_ExplicitContractReplacesInferredThrows.Source7");
             CSharpCompilation compilation = TestCompilation.Create(implicitSource);
             Microsoft.CodeAnalysis.INamedTypeSymbol argumentNull =
                 compilation.GetTypeByMetadataName("System.ArgumentNullException")!;
             ContractResolver resolver = new(
                 new ExceptionTypeResolver(compilation),
-                method => method.MethodKind == Microsoft.CodeAnalysis.MethodKind.Constructor
+                new StubImplicitContracts(method => method.MethodKind == Microsoft.CodeAnalysis.MethodKind.Constructor
                     ? [argumentNull]
-                    : []);
+                    : []));
             Microsoft.CodeAnalysis.INamedTypeSymbol host = compilation.GetTypeByMetadataName("Host")!;
 
             ExceptionContract unmarked = resolver.GetEffectiveContract(constructor(host, "string"));
@@ -165,6 +165,14 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(
                 ioException.Matches(resolver.GetDeclaredContract(constructor(host, "bool"))),
                 Is.True);
+        }
+
+        private sealed class StubImplicitContracts(
+            System.Func<Microsoft.CodeAnalysis.IMethodSymbol, System.Collections.Immutable.ImmutableArray<Microsoft.CodeAnalysis.INamedTypeSymbol>> types)
+            : IImplicitContractSource
+        {
+            public System.Collections.Immutable.ImmutableArray<Microsoft.CodeAnalysis.INamedTypeSymbol> GetImplicitDeclaredTypes(
+                Microsoft.CodeAnalysis.IMethodSymbol method) => types(method);
         }
 
         private static Microsoft.CodeAnalysis.IMethodSymbol constructor(
