@@ -6,6 +6,7 @@ using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Generation;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Exceptionable.Analyzers.Tests
 {
@@ -232,6 +233,56 @@ namespace Exceptionable.Analyzers.Tests
                     ExceptionType: (string)attribute.ConstructorArguments[1].Value!))
                 .OrderBy(record => record.MemberId, StringComparer.Ordinal)
                 .ThenBy(record => record.ExceptionType, StringComparer.Ordinal)];
+        }
+
+        [Test]
+        public void Planner_DeduplicatesExpandedMembers_BeforeAnalysis()
+        {
+            string source = AnalyzerTestHarness.GetTestCase("Generator_PlansEachMemberOnce_WhenAMemberHasManyThrows");
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            ImmutableArray<SyntaxNode> throwNodes = [.. compilation.SyntaxTrees
+                .SelectMany(tree => tree.GetRoot().DescendantNodes())
+                .Where(node => node is ThrowStatementSyntax or ThrowExpressionSyntax)];
+            Assert.That(throwNodes, Has.Length.EqualTo(6));
+
+            ImmutableArray<IMethodSymbol> members = InferredThrowsPlanner.DistinctExpandedMembers(
+                throwNodes,
+                compilation,
+                default);
+            Assert.That(
+                members.Select(member => member.GetDocumentationCommentId()).ToArray(),
+                Is.EqualTo(new[]
+                {
+                    "M:Library.Resource.#ctor",
+                    "M:Library.Resource.Execute(System.Int32)",
+                }));
+        }
+
+        [Test]
+        public void Generator_PlansEachMemberOnce_WhenAMemberHasManyThrows()
+        {
+            string source = AnalyzerTestHarness.GetTestCase("Generator_PlansEachMemberOnce_WhenAMemberHasManyThrows");
+            CSharpCompilation compilation = TestCompilation.Create(source)
+                .AddReferences(MetadataReference.CreateFromFile(typeof(DoesNotThrowAttribute).Assembly.Location));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                [new InferredThrowsGenerator().AsSourceGenerator()],
+                driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
+            driver = driver.RunGenerators(compilation);
+
+            GeneratorRunResult result = driver.GetRunResult().Results.Single();
+            Assert.That(result.TrackedSteps["InferredThrows.ThrowSites"], Has.Length.EqualTo(6));
+            Assert.That(result.TrackedSteps["InferredThrows.Plan"].Single().Outputs, Has.Length.EqualTo(1));
+            Assert.That(
+                readRecorded(emit(source, out _)),
+                Is.EqualTo(new (string MemberId, string ExceptionType)[]
+                {
+                    ("M:Library.Resource.#ctor", "System.ArgumentException"),
+                    ("M:Library.Resource.#ctor", "System.InvalidOperationException"),
+                    ("M:Library.Resource.#ctor", "System.TimeoutException"),
+                    ("M:Library.Resource.Execute(System.Int32)", "System.ArgumentException"),
+                    ("M:Library.Resource.Execute(System.Int32)", "System.InvalidOperationException"),
+                    ("M:Library.Resource.Execute(System.Int32)", "System.TimeoutException"),
+                }));
         }
 
         [Test]

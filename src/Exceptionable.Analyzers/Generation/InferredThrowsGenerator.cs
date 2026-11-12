@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Text;
-using Exceptionable.Analyzers.Analysis;
 using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -21,18 +20,25 @@ namespace Exceptionable.Analyzers.Generation
         /// <inheritdoc />
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            // Entries are equatable values, so unchanged throw sites keep the output step cached.
-            IncrementalValuesProvider<InferredThrowEntry> entries = context.SyntaxProvider.CreateSyntaxProvider(
+            // Collect throw sites first. Planning then deduplicates the expanded members and
+            // analyzes each method or initializer-running constructor once per compilation.
+            IncrementalValuesProvider<SyntaxNode> throwSites = context.SyntaxProvider.CreateSyntaxProvider(
                     static (node, _) => node is ThrowStatementSyntax or ThrowExpressionSyntax,
-                    static (syntaxContext, cancellationToken) => InferredThrowsPlanner.GetEntries(
-                        syntaxContext.SemanticModel.GetEnclosingSymbol(syntaxContext.Node.SpanStart, cancellationToken),
-                        syntaxContext.SemanticModel.Compilation,
-                        cancellationToken))
-                .SelectMany(static (array, _) => array);
+                    static (syntaxContext, _) => syntaxContext.Node)
+                .WithTrackingName("InferredThrows.ThrowSites");
+            IncrementalValueProvider<ImmutableArray<InferredThrowEntry>> entries = throwSites
+                .Collect()
+                .Combine(context.CompilationProvider)
+                .Select(static (source, cancellationToken) => InferredThrowsPlanner.GetEntries(
+                    source.Left,
+                    source.Right,
+                    cancellationToken))
+                .WithComparer(InferredThrowEntrySetComparer.Instance)
+                .WithTrackingName("InferredThrows.Plan");
             IncrementalValueProvider<string> attributeName = context.CompilationProvider
                 .Select(static (compilation, _) => getAttributeName(compilation));
             context.RegisterSourceOutput(
-                entries.Collect().Combine(attributeName),
+                entries.Combine(attributeName),
                 static (production, source) => emit(production, source.Left, source.Right));
         }
 
