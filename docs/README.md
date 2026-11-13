@@ -16,6 +16,8 @@ settings do not turn analysis on. Behavior and limits are defined in
 | [EXC007](diagnostics/EXC007.md) | Warning | An `ArgumentNullException` guard may be redundant with nullable annotations. |
 | [EXC008](diagnostics/EXC008.md) | Warning | A `[Throws]` type does not escape. |
 | [EXC009](diagnostics/EXC009.md) | Warning | An implementation does not declare the same exception contract as an interface member. |
+| [EXC010](diagnostics/EXC010.md) | Warning | A callback may throw an exception its parameter contract does not allow. |
+| [EXC011](diagnostics/EXC011.md) | Error | An exception contract on a parameter requires a delegate. |
 
 Messages name exception types with their namespace-qualified display names.
 
@@ -23,10 +25,15 @@ Messages name exception types with their namespace-qualified display names.
 
 The `Exceptionable.Analyzers` package includes code fixes for:
 
-- EXC003: add `[Throws("<type>")]` to the enclosing method, constructor or
-  accessor. Not offered for `[DoesNotThrow]` members or inside lambdas and
-  local functions.
+- EXC002 and EXC003: add `[Throws("<type>")]` to the enclosing method,
+  constructor, accessor, or local function. Not offered for `[DoesNotThrow]`
+  members or inside lambdas.
+- EXC006: remove the unnecessary `catch` clauses. When the `try` has no
+  `finally`, remove the `try` as well.
 - EXC008: remove the stale `[Throws]` attribute.
+- EXC009: copy the interface `[Throws]` or `[DoesNotThrow]` contract onto an
+  implementation that does not already declare one. Not offered for a generic
+  exception type.
 
 ## Framework polyfills
 

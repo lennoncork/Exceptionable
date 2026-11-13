@@ -20,8 +20,7 @@ namespace Exceptionable.Analyzers.Analysis
             ExceptionableCompilationContext compilationContext)
         {
             if (operationContext.Operation is not IThrowOperation throwOperation ||
-                !compilationContext.Options.IsEnabled(throwOperation.Syntax.SyntaxTree) ||
-                OperationScope.IsIgnored(throwOperation))
+                !compilationContext.Options.IsEnabled(throwOperation.Syntax.SyntaxTree))
             {
                 return;
             }
@@ -31,9 +30,11 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetMethods(operationContext.ContainingSymbol)
-                .Where(compilationContext.IsSupportedMethod)];
-            if (hosts.Length == 0)
+            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetAnalysisHosts(
+                throwOperation,
+                operationContext.ContainingSymbol,
+                compilationContext.IsSupportedMethod)];
+            if (hosts.Length == 0 || hosts.All(host => OperationScope.IsHiddenFrom(throwOperation, host)))
             {
                 return;
             }

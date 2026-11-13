@@ -108,9 +108,11 @@ adopt the analyzer without requiring the attributes package.
 
 ### `[DoesNotThrow]`
 
-Apply to a method or class to state that the annotated member does not allow an
-exception to escape. On a class, the contract applies to its eligible instance
-and static methods unless a member has a more specific contract.
+Apply to a method, local function, parameter, or class to state that the
+annotated member does not allow an exception to escape. On a class, the
+contract applies to its eligible instance and static methods unless a member
+has a more specific contract. On a delegate parameter, it states that the
+callback does not throw when the method invokes it.
 
 This is a strong promise: an implementation must not let an exception escape.
 It does not mean that no exception can occur inside the method; a method may
@@ -118,9 +120,10 @@ throw and handle an exception internally.
 
 ### `[Throws("Exception")]` and `[Throws<TException>]`
 
-Apply either form to a method or class to declare an exception type that may
-escape. The string form's argument is a type name, not an exception message.
-`[Throws<TException>]` takes the exception type directly. `TException` must
+Apply either form to a method, local function, delegate parameter, or class
+to declare an exception type that may escape. The string form's argument is a
+type name, not an exception message. `[Throws<TException>]` takes the exception
+type directly. `TException` must
 derive from `System.Exception`. The package attribute enforces that with a
 type constraint, and the analyzer applies the same inheritance check to every
 recognized generic `[Throws]`, including a source-defined attribute that omits
@@ -159,9 +162,10 @@ type parameter is rejected by the compiler and is not a contract.
 
 ### Attribute usage and precedence
 
-- The attributes are valid on methods, constructors, classes, structs,
-  properties (including indexers), and events, and are inherited where C#
-  attribute inheritance applies. They are not valid on an interface type.
+- The attributes are valid on methods, constructors, local functions, classes,
+  structs, properties (including indexers), events, and parameters, and are
+  inherited where C# attribute inheritance applies. They are not valid on an
+  interface type.
   An interface contract is declared on each interface member. A derived
   interface member that redeclares a base member and does not declare its
   own contract keeps that base contract. When the member replaces several
@@ -204,12 +208,23 @@ type parameter is rejected by the compiler and is not a contract.
   replacement is a conflict with attributes that remain declared only on the
   base.
 - Applying both attributes at the same declaration is invalid and reported.
-  That includes a property or event that carries both attributes.
+  That includes a property, event, or parameter that carries both attributes.
+- On a parameter, the contract applies only when the parameter type is a
+  delegate. `[DoesNotThrow]` requires the callback to let no known exception
+  escape. `[Throws]` allows only that set, including derived types. A lambda,
+  anonymous method, local function, or method group passed for the parameter
+  is EXC010 when a known escaping exception is outside that contract. A
+  callback whose body or contract is unknown is not reported. Invoking a
+  `[DoesNotThrow]` delegate parameter is a non-throwing call. Invoking a
+  `[Throws]` delegate parameter is EXC003 unless the caller permits each
+  declared type. A contract on a parameter whose type is not a delegate is
+  EXC011.
 - Constructors, property and event accessors, user-defined operators, and
-  user-defined conversions are included. Local functions and lambdas remain
-  out of scope. A `yield` in a nested local function does not make the
-  enclosing method an iterator, and a throw or call inside a local function
-  or lambda is not treated as part of the enclosing method.
+  user-defined conversions are included. A non-async local function with no
+  `yield` is included as its own host. Lambdas and anonymous methods are not
+  hosts. A `yield` in a nested local function does not make the enclosing
+  method an iterator, and a throw or call inside a local function or lambda
+  is not treated as part of the enclosing method.
 
 Precedence must be implemented centrally and covered by tests, rather than
 being independently reinterpreted by each diagnostic. For a source
@@ -273,13 +288,20 @@ catch the exception or declare it, or the call is EXC003. A member that only
 calls a throwing member is not given the callee's contract. A constructor
 that only chains with `: this()` or `: base()` is checked at that chain.
 
-Caught throws, unreachable throws, and throws inside a local function,
-lambda, or anonymous function do not count. Async methods, iterators, and
-generated members are not inferred. `ArgumentNullException.ThrowIfNull` is
-an ordinary call and is not an implicit source. Field and property
-initializers that a constructor runs, including a primary-constructor
-initializer, count as throws of that constructor. Struct constructors follow
-the same rules.
+Caught throws and unreachable throws do not count. A throw inside a local
+function or lambda is not a throw of the enclosing method. A non-async local
+function that does not contain `yield` is its own supported host: its throws
+are inferred for that local function, an explicit contract on it replaces
+that inference, and a direct call is EXC003. A lambda is not a host. Invoking
+a lambda, anonymous method, or method group through a delegate local that has
+one known assignment reports that callback's known escaping exceptions as
+EXC003. A second assignment, a field, or a callback with no known contract
+stays unspecified. Private local functions are not recorded by the
+inferred-throws generator. Async methods, iterators, and generated members
+are not inferred. `ArgumentNullException.ThrowIfNull` is an ordinary call and
+is not an implicit source. Field and property initializers that a constructor
+runs, including a primary-constructor initializer, count as throws of that
+constructor. Struct constructors follow the same rules.
 
 An interface contract does not replace inference on a source implementation.
 A call through the interface uses the interface contract. The implementation
@@ -331,7 +353,16 @@ or abstract dispatch, built-in arithmetic, loops, `foreach`, `using`, and any
 other operation suppress EXC006, because the catch may still handle an
 exception the analyzer recognizes or cannot rule out. `nameof` does not
 invoke the named member. Lambdas and local functions are not treated as
-invoked by the try body.
+invoked by the try body. Invoking a delegate parameter whose direct contract
+is `[DoesNotThrow]` is a non-throwing call for EXC006. A virtual
+`[DoesNotThrow]` is not, because dispatch is uncertain.
+
+An open virtual or unsealed override call is checked only for the explicit
+`[Throws]` set on the statically selected method. An inferred throw on that
+method, and `[DoesNotThrow]` on that method, are not enforced at the call,
+because an override can replace them. `base` access, a sealed method, and a
+method on a sealed type use the selected member in full. An abstract method
+is checked only when it declares `[Throws]` and its return is not deferred.
 
 These meanings apply to synchronous, non-iterator methods. `[Throws]` on an
 `async` method does not currently describe exceptions observed when awaiting
@@ -339,20 +370,23 @@ its returned task, and a contract on an iterator does not describe exceptions
 observed during enumeration. C# captures exceptions from an `async` method,
 including an exception textually before its first `await`, in the returned
 faulted task. Exceptions after an `await` are likewise observed when the task
-is awaited. Iterator-body exceptions occur as enumeration advances; async
-iterator exceptions are observed during asynchronous enumeration. The
-analyzer skips async and iterator bodies and their known call sites, including
-calls inside an async method, rather than treating deferred failures as
-synchronous call-site throws. It also skips calls returning `Task`,
-`ValueTask`, `IEnumerable`, `IEnumerator`, `IAsyncEnumerable`, or
-`IAsyncEnumerator`, since it cannot distinguish eager from deferred
-implementations of those APIs. Thus a `[DoesNotThrow]` async caller is not
-evidence that an awaited call cannot fail. A non-async method returning
-`Task` or `ValueTask` is different: its body is analyzed for immediate
-throws, but callers of that deferred return type are still skipped, even when
-the method throws before returning a task. These cases are intentionally out
-of scope until invocation, `await`, and enumeration contracts can be modeled
-separately.
+is awaited. Iterator-body exceptions occur as enumeration advances, including
+a throw that appears before the first `yield`. Async iterator exceptions are
+observed during asynchronous enumeration. The analyzer skips async and
+iterator bodies and their known call sites, including calls inside an async
+method, rather than treating deferred failures as synchronous call-site
+throws.
+
+A call that returns `Task`, `ValueTask`, `IEnumerable`, `IEnumerator`,
+`IAsyncEnumerable`, or `IAsyncEnumerator` is synchronous when the selected
+method has an executable body and is not async or an iterator. A throw in
+that body escapes at the call that creates the task or sequence. A signature
+with no body stays deferred, even when it declares `[Throws]`: the contract
+may describe a fault observed on `await` or during enumeration. Interface
+members and abstract members are in that group. An open virtual or unsealed
+override with a deferred return is also skipped, because the runtime override
+may defer the exception. Thus a `[DoesNotThrow]` async caller is not evidence
+that an awaited call cannot fail.
 
 The analyzer must not claim soundness for exceptions without a known contract.
 A call to a member with no explicit or inferred contract is not assumed to be
@@ -415,11 +449,10 @@ contract is trusted for external implementations; a source method inherited
 from a base class that does not itself implement the interface is not
 validated against a derived class's interface contract. EXC009 follows the
 same mapping: it is reported on a source implementation declared by the type
-that implements the interface. Open virtual,
-abstract, and unsealed override calls stay unsupported because the runtime
-target can differ from the statically selected method. A sealed method, and a
-method declared on a sealed type, is analyzed as that method. A `base` access
-is analyzed as the selected member.
+that implements the interface. An open virtual or unsealed override call is
+checked only for an explicit `[Throws]` set on the statically selected
+method. A sealed method, and a method declared on a sealed type, is analyzed
+as that method. A `base` access is analyzed as the selected member.
 
 For `throw expression`, report the expression's static exception type before
 the implicit conversion to `System.Exception` required by C#. A thrown
@@ -452,15 +485,20 @@ Keep the first release focused and document its limits. Add explicit support
 in later phases for:
 
 - `async` methods, including exceptions observed when awaiting a task, and
-  task-returning calls. An eventual model must distinguish invocation from
-  `await`, handle catches around `await`, and propagate only exceptions
-  observed by the caller.
+  task-returning calls whose body is not in the compilation. An eventual
+  model must distinguish invocation from `await`, handle catches around
+  `await`, and propagate only exceptions observed by the caller. A non-async
+  method with a body is already checked at the creating call.
 - Iterators, where exceptions can arise during `MoveNext` or asynchronous
-  enumeration rather than when the iterator method is called. A model must
-  account for enumeration catches and deferred caller contracts.
-- Lambdas and delegates. Open virtual, abstract, and unsealed override
-  dispatch remains unsupported because the runtime target may differ from
-  the statically selected method.
+  enumeration rather than when the iterator method is called, including a
+  throw before the first `yield`. A model must account for enumeration
+  catches and deferred caller contracts.
+- Lambdas as hosts. A lambda used as a callback argument, or invoked through
+  one known delegate assignment, is checked. An arbitrary stored delegate is
+  not.
+- Inferred throws and `[DoesNotThrow]` on open virtual and unsealed override
+  calls. Those calls are checked only for an explicit `[Throws]` set on the
+  statically selected method, because an override can replace the rest.
 - Non-constant exception filters and complex rethrow/data-flow cases.
 - Open exception type parameters as thrown types or `[Throws<T>]` arguments.
   A closed constructed type that derives from `System.Exception` is a valid
@@ -469,10 +507,10 @@ in later phases for:
   Polyfills (section 9) cover curated framework APIs in the meantime.
 
 Until a case is supported, it must not produce misleading certainty. Async
-and iterator bodies and their recognized deferred call sites are skipped;
-custom awaitables, custom enumerable abstractions, and external iterator
-implementations that cannot be identified from source remain outside the
-current guarantees. Document these limitations in help text and tests.
+and iterator bodies are skipped. A deferred return with no executable body is
+skipped. Custom awaitables, custom enumerable abstractions, and external
+iterator implementations that cannot be identified from source remain outside
+the current guarantees. Document these limitations in help text and tests.
 
 ## 8. Diagnostics
 
@@ -486,11 +524,13 @@ categories, default severities, and help links. The catalog is
 | EXC002 | An explicit `throw` escapes a `[Throws]` method but is not in its declared set. | Warning |
 | EXC003 | A call, creation, accessor, operator, conversion, or supported pattern method may throw an exception that is neither caught nor permitted by the caller's contract. This includes a call inside a `[DoesNotThrow]` method. | Warning |
 | EXC004 | `[Throws]` names no exception type, names an ambiguous type, or names a type that does not derive from `System.Exception`. | Error |
-| EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, or event. | Error |
+| EXC005 | `[DoesNotThrow]` and `[Throws]` conflict on the same class, struct, member, property, event, or parameter. | Error |
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
 | EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled; the guard may be redundant with the nullable contract, which is not runtime validation. | Warning |
 | EXC008 | A `[Throws]` type does not escape, and the member produces some other known escaping exception. Remove the stale declaration or restore a throw or call that produces it. | Warning |
 | EXC009 | A source implementation's declared `[Throws]` or `[DoesNotThrow]` contract does not match an implemented interface member. | Warning |
+| EXC010 | A lambda, anonymous method, local function, or method group passed for a delegate parameter may throw an exception that parameter's contract does not allow. | Warning |
+| EXC011 | `[Throws]` or `[DoesNotThrow]` is applied to a parameter whose type is not a delegate. | Error |
 
 EXC001 and EXC002 report explicit throws. EXC008 reports a `[Throws]`
 attribute whose type no longer escapes. A call whose contract is explicit
@@ -501,7 +541,8 @@ exception types with their namespace-qualified display names, so two exceptions 
 short name stay distinct. Diagnostics identify the relevant throw or call
 site. Avoid diagnostics for exception sources with no known contract.
 EXC009 reports the implementing member when its declared contract is not
-equivalent to the interface member's declared contract.
+equivalent to the interface member's declared contract. EXC010 reports the
+callback argument. EXC011 reports the parameter.
 
 ## 9. Analysis configuration
 
@@ -646,11 +687,11 @@ documented exception.
   the sequence is enumerated, which needs the iterator model in section 7.
 - Blocking task members (`Task.Wait`, `Task.WaitAll`, `Task<T>.Result`) are
   entries today and report `AggregateException`.
-- Awaited tasks are **not** covered yet. A task-returning API is skipped and
-  async method bodies are not analyzed. Supporting them requires an entry to
-  mark exceptions observed on `await`, plus analysis of `await` inside
-  catches and async hosts. This is an open decision (section 13) and the next
-  stage after the synchronous catalog.
+- Awaited tasks are **not** covered yet. A task-returning API with no
+  executable body is skipped, and async method bodies are not analyzed.
+  Supporting them requires an entry to mark exceptions observed on `await`,
+  plus analysis of `await` inside catches and async hosts. This is an open
+  decision (section 13) and the next stage after the synchronous catalog.
 
 ## 10. Suggested architecture
 
@@ -748,20 +789,30 @@ phase 4 documentation:
   unchanged.
 - EXC009 warns when a source implementation does not declare the same
   `[Throws]` or `[DoesNotThrow]` contract as an implemented interface member.
-- Supported hosts are recorded in section 13.
+- Code fixes ship in `Exceptionable.Analyzers.CodeFixes`: remove a stale
+  `[Throws]` for EXC008; add `[Throws("<type>")]` for EXC002 and EXC003;
+  remove an unnecessary `try`/`catch` for EXC006, keeping `finally`; and copy
+  an interface `[Throws]` or `[DoesNotThrow]` onto an implementation that has
+  no direct contract for EXC009. The add-`[Throws]` fix is not offered inside
+  lambdas, on `[DoesNotThrow]` members, for a closed generic exception type,
+  or when the `Throws` attribute is not available. The EXC009 fix is not a
+  batch fix and skips a generic exception type whose display name contains
+  `<`. EXC010 has no fix. A fix must never generate a catch that silently
+  suppresses an exception.
+- Supported hosts include non-async local functions that do not contain
+  `yield`. A throw in a local function or lambda is not a throw of the
+  enclosing method. A delegate parameter's `[DoesNotThrow]` or `[Throws]`
+  contract is checked at the callback argument (EXC010) and at an invocation
+  of that parameter (EXC003 or EXC006). A contract on a non-delegate
+  parameter is EXC011.
+- A method with an executable body is checked at the call even when it
+  returns `Task`, `ValueTask`, or a standard enumerable type, unless the
+  method is async or an iterator. A body-less deferred signature stays
+  deferred. An open virtual or unsealed override is checked only for its
+  explicit `[Throws]` set.
 
 Still open:
 
-- Code fixes. `Exceptionable.Analyzers.CodeFixes` ships two: remove a stale
-  `[Throws]` for EXC008, and add `[Throws("<type>")]` (string form, valid on
-  every target framework) to the enclosing method, constructor or accessor
-  for EXC003. The EXC003 fix is not offered inside lambdas or local
-  functions, on `[DoesNotThrow]` members, for closed generic exception types,
-  or when the `Throws` attribute is not available. The remaining candidates
-  are: add `[Throws]` for EXC002, remove an unnecessary `try`/`catch` for
-  EXC006, and align an implementation's contract for EXC009. Add a fix only
-  where it is safe. Never generate a catch that silently suppresses an
-  exception.
 - Reading throws from assemblies that were not compiled with this generator.
   Framework and third-party methods stay unspecified unless they declare
   `[Throws]` or an enabled polyfill describes them. Growing the polyfill
@@ -774,11 +825,12 @@ Still open:
   79/121/372 ms initially and 18/68/186 ms for a one-method throw-type edit. A
   per-member output prototype did not improve those edit times (17/105/310 ms),
   so it was not retained. Re-profile before a further pipeline redesign.
-- Async/await and iterator contracts, before enabling rules for those
-  constructs. The polyfill catalog covers only synchronous and blocking
-  members until then (section 9). Override compatibility beyond the sealed and `base` cases also
-  remains future work. EXC009 covers interface implementations only; class
-  virtual and override contract replacement stays allowed.
+- Async/await observation and iterator `MoveNext` observation remain open.
+  The polyfill catalog covers only synchronous and blocking members until
+  then (section 9). Inferred throws and `[DoesNotThrow]` on open virtual and
+  unsealed override calls also remain unchecked. EXC009 covers interface
+  implementations only; class virtual and override contract replacement stays
+  allowed.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -838,6 +890,19 @@ Minimum acceptance criteria for the initial usable release:
   publish that exception. Nullable-oblivious callers can still trigger the
   runtime guard without receiving EXC003. A nullable or `[AllowNull]`
   parameter keeps the inferred contract.
+- A lambda, local function, or method group passed for a `[DoesNotThrow]` or
+  `[Throws]` delegate parameter is EXC010 when a known exception escapes the
+  callback and the parameter contract does not allow it. Invoking that
+  parameter uses the parameter contract. A contract on a non-delegate
+  parameter is EXC011.
+- A direct call of a local function, and an invocation of a delegate local
+  with one known lambda or method-group assignment, reports the callback's
+  known exceptions as EXC003. The throw is not EXC001 on the enclosing method.
+- A non-async, non-iterator method with a body that throws before returning
+  `Task` or `IEnumerable` is EXC003 at the creating call. An interface or
+  abstract method with the same return type and `[Throws]` is not.
+- An open virtual call reports EXC003 for the explicit `[Throws]` set on the
+  statically selected method. An inferred-only virtual throw is not EXC003.
 - The analyzer builds, loads in a consumer project, and runs without
   diagnostics caused by the analyzer itself.
 - Tests explicitly capture unsupported cases so future phases can expand
@@ -859,8 +924,8 @@ The initial implementation confirms these decisions:
 - Per-file analysis uses `exceptionable_analysis`. There is no `#exceptionable`
   directive. The compiler rejects that syntax, and an analyzer cannot add one.
   See section 9.
-- Diagnostics use the `EXC` prefix. EXC001-EXC003 and EXC006-EXC009 are
-  enabled warnings and EXC004-EXC005 are enabled errors.
+- Diagnostics use the `EXC` prefix. EXC001-EXC003, EXC006-EXC010 are
+  enabled warnings and EXC004, EXC005, and EXC011 are enabled errors.
 - A reachable uncaught throw on a supported synchronous member adds an
   inferred `[Throws]` contract for that exception. The generator records it
   with the member's documentation comment id. An explicit `[Throws]` or
@@ -893,9 +958,12 @@ The initial implementation confirms these decisions:
   contract; several base contracts intersect, and an empty intersection is
   `[DoesNotThrow]`.
 - A derived type contract replaces a base type contract, and an override's
-  contract replaces the base method contract. Open virtual, abstract, and
-  unsealed override call sites remain unsupported. Sealed methods and methods
-  on sealed types are checked at the call.
+  contract replaces the base method contract. An open virtual or unsealed
+  override call is checked only for the explicit `[Throws]` set on the
+  statically selected method. Inferred throws and `[DoesNotThrow]` on those
+  members stay unchecked. Sealed methods, methods on sealed types, and
+  `base` access are checked as the selected member. An abstract method is
+  checked when it declares `[Throws]` and its return is not deferred.
 - A short exception name is an error when more than one exception type uses
   it. EXC004 says that the name is ambiguous. An unresolved name uses the
   invalid-type wording. A name or generic type argument that identifies a
@@ -922,7 +990,12 @@ The initial implementation confirms these decisions:
   with the synthesized copy constructor.
   Synchronous `foreach` and `using` pattern methods, and
   deconstruction, are calls. `throw null` is `NullReferenceException`.
-  `nameof`, local functions, and lambdas are not enclosing-method throws.
+  `nameof` is not an enclosing-method throw. A throw inside a local function
+  or lambda is not an enclosing-method throw. A non-async local function
+  without `yield` is its own host. A delegate parameter may declare
+  `[DoesNotThrow]` or `[Throws]`; the callback argument is EXC010 when a
+  known exception escapes that contract, and a non-delegate parameter is
+  EXC011.
 - GitVersion derives package versions from Git history. Feature-branch and
   other non-release commits use ContinuousDelivery so the prerelease number
   changes with each commit. Package versions use that SemVer value and omit
@@ -931,15 +1004,17 @@ The initial implementation confirms these decisions:
   GitVersion-generated package versions. `main` remains labeled `beta` until
   a release tag selects the stable or prerelease version.
 
-Async/await and iterator contracts remain open. `[Throws]` currently describes
-only synchronous exceptions; it does not describe faults observed when awaiting
-tasks or enumerating iterators. Task-like and standard enumerable-returning
-calls are skipped to avoid reporting deferred exceptions as immediate ones.
-The same skip includes synchronous throws inside async and iterator methods.
-`foreach` still checks `GetEnumerator` because that call is immediate.
-Open virtual and unsealed override call sites also remain unsupported.
-`base` access is checked. Local functions and lambdas are not part of the
-enclosing method.
+Async/await observation and iterator `MoveNext` observation remain open.
+`[Throws]` on an async method or iterator does not describe faults observed
+when awaiting a task or enumerating the sequence. A body-less method that
+returns `Task`, `ValueTask`, or a standard enumerable type is skipped, even
+when it declares `[Throws]`. A non-async, non-iterator method with a body is
+checked at the creating call, including a throw before it returns the task
+or sequence. `foreach` still checks `GetEnumerator` because that call is
+immediate. Inferred throws and `[DoesNotThrow]` on open virtual and unsealed
+override calls stay unchecked. `base` access is checked. Local functions are
+hosts of their own. Lambdas are checked when passed to a contracted delegate
+parameter or invoked through one known assignment.
 
 Polyfill decisions are in section 9. Open decisions about them:
 
@@ -957,4 +1032,5 @@ Polyfill decisions are in section 9. Open decisions about them:
   Its DLL is packed into the `Exceptionable.Analyzers` package under
   `analyzers/dotnet/cs`, so consumers install one analyzer package and
   command-line builds never load Workspaces. The analyzer publishes the data
-  a fix needs as diagnostic properties (EXC003: `ExceptionType`).
+  a fix needs as diagnostic properties (EXC002 and EXC003: `ExceptionType`;
+  EXC009: `ContractKind` and `ExceptionTypes`).

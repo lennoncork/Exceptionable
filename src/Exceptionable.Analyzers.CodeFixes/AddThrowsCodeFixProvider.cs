@@ -21,7 +21,11 @@ namespace Exceptionable.Analyzers.CodeFixes
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(AddThrowsCodeFixProvider)), Shared]
     public sealed class AddThrowsCodeFixProvider : CodeFixProvider
     {
-        public override ImmutableArray<string> FixableDiagnosticIds { get; } = [ExceptionableDiagnosticIds.CallerViolation];
+        public override ImmutableArray<string> FixableDiagnosticIds { get; } =
+        [
+            ExceptionableDiagnosticIds.ThrowsMismatch,
+            ExceptionableDiagnosticIds.CallerViolation,
+        ];
 
         public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 
@@ -53,16 +57,16 @@ namespace Exceptionable.Analyzers.CodeFixes
                 diagnostic);
         }
 
-        // The analyzer ignores lambdas and local functions, so the nearest member is the contract owner.
+        // A local function owns its contract. A lambda has no declaration the fix can annotate.
         private static SyntaxNode? findDeclaringMember(SyntaxNode node)
         {
             foreach (SyntaxNode ancestor in node.AncestorsAndSelf())
             {
                 switch (ancestor)
                 {
-                    case LocalFunctionStatementSyntax:
                     case AnonymousFunctionExpressionSyntax:
                         return null;
+                    case LocalFunctionStatementSyntax:
                     case BaseMethodDeclarationSyntax:
                     case AccessorDeclarationSyntax:
                         return ancestor;
@@ -92,6 +96,7 @@ namespace Exceptionable.Analyzers.CodeFixes
             member switch
             {
                 BaseMethodDeclarationSyntax method => method.AttributeLists,
+                LocalFunctionStatementSyntax localFunction => localFunction.AttributeLists,
                 AccessorDeclarationSyntax accessor => accessor.AttributeLists,
                 _ => default,
             };
@@ -119,6 +124,7 @@ namespace Exceptionable.Analyzers.CodeFixes
             SyntaxNode updatedMember = member switch
             {
                 BaseMethodDeclarationSyntax method => addToMethod(method, attributeList),
+                LocalFunctionStatementSyntax localFunction => localFunction.AddAttributeLists(attributeList),
                 AccessorDeclarationSyntax accessor => addToAccessor(accessor, attributeList),
                 _ => member,
             };

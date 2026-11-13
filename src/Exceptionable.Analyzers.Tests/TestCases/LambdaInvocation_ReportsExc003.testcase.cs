@@ -1,5 +1,5 @@
-// Tests a throw inside a lambda. Creating or invoking the delegate is not that throw.
-// Expected behavior: do not report EXC001 for the lambda body.
+// Tests a lambda stored in a local and then invoked.
+// Expected behavior: report EXC003 at the invocation. The throw is not EXC001 on the outer method.
 using System;
 using Exceptionable;
 class C

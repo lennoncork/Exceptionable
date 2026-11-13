@@ -12,6 +12,9 @@ namespace Exceptionable.Analyzers.Analysis
         private readonly ConcurrentDictionary<IMethodSymbol, bool> supportedMethods =
             new(SymbolEqualityComparer.Default);
 
+        private readonly ConcurrentDictionary<IMethodSymbol, DelegateBindingMap> delegateBindings =
+            new(SymbolEqualityComparer.Default);
+
         internal ExceptionableCompilationContext(
             Compilation compilation,
             AnalyzerConfigOptionsProvider optionsProvider)
@@ -29,6 +32,11 @@ namespace Exceptionable.Analyzers.Analysis
 
         internal bool IsSupportedMethod(IMethodSymbol method) =>
             this.supportedMethods.GetOrAdd(method, static candidate => MethodAnalysisPolicy.IsSupportedMethod(candidate));
+
+        internal DelegateBindingMap GetDelegateBindings(IMethodSymbol method) =>
+            this.delegateBindings.GetOrAdd(
+                method,
+                candidate => DelegateBindingMap.Build(this.Compilation, candidate));
 
         internal Compilation Compilation { get; }
 

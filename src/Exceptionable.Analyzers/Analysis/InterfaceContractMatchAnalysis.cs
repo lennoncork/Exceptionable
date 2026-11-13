@@ -53,10 +53,15 @@ namespace Exceptionable.Analyzers.Analysis
                     continue;
                 }
 
+                ExceptionContract direct = contracts.GetDirectContract(method);
+                bool implementationDeclaresContract = direct.HasContract ||
+                    (method.AssociatedSymbol is ISymbol associated &&
+                        contracts.GetDirectContract(associated).HasContract);
                 symbolContext.ReportDiagnostic(DiagnosticFactory.InterfaceContractMismatch(
                     location,
                     method.GetQualifiedContractDisplayName(),
-                    interfaceMember.GetQualifiedContractDisplayName()));
+                    interfaceMember.GetQualifiedContractDisplayName(),
+                    implementationDeclaresContract ? null : interfaceContract));
             }
         }
 

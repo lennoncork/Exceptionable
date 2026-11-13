@@ -149,6 +149,23 @@ namespace Exceptionable.Analyzers.Analysis
 
             private Step walkCall(IOperation operation)
             {
+                if (operation is IInvocationOperation invocation &&
+                    invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                    this.tryGetDoesNotThrowCallback(invocation, out string callbackName))
+                {
+                    if (this.walkChildren(operation) == Step.Disqualified)
+                    {
+                        return Step.Disqualified;
+                    }
+
+                    if (!this.names.Contains(callbackName))
+                    {
+                        this.names.Add(callbackName);
+                    }
+
+                    return Step.Ok;
+                }
+
                 IMethodSymbol[] targets = [.. OperationTargetResolver.GetTargetMethods(operation)];
                 if (targets.Length == 0 || targets.Any(target => !this.isProvenDoesNotThrow(target, operation)))
                 {
@@ -183,6 +200,25 @@ namespace Exceptionable.Analyzers.Analysis
                 }
 
                 return Step.Ok;
+            }
+
+            private bool tryGetDoesNotThrowCallback(IInvocationOperation invocation, out string name)
+            {
+                name = string.Empty;
+                IOperation? instance = invocation.Instance;
+                while (instance is IConversionOperation conversion)
+                {
+                    instance = conversion.Operand;
+                }
+
+                if (instance is not IParameterReferenceOperation parameter ||
+                    !this.compilationContext.ContractResolver.GetDirectContract(parameter.Parameter).IsDoesNotThrow)
+                {
+                    return false;
+                }
+
+                name = parameter.Parameter.Name;
+                return true;
             }
 
             private bool isProvenDoesNotThrow(IMethodSymbol target, IOperation operation)

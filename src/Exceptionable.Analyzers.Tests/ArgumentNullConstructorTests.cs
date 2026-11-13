@@ -172,7 +172,9 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
                 AnalyzerTestHarness.GetTestCase(nameof(LocalFunctionArgumentNull_DoesNotMarkConstructor)));
 
-            Assert.That(diagnostics, Is.Empty);
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("System.ArgumentNullException"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC007"));
         }
 
         [Test]

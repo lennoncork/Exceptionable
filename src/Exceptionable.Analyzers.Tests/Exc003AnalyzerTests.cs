@@ -126,9 +126,18 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
-        public void VirtualCall_DoesNotReportExc003()
+        public void VirtualCall_ReportsStaticContract()
         {
-            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(VirtualCall_DoesNotReportExc003)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(VirtualCall_ReportsStaticContract)));
+
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("System.IO.IOException"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));
+        }
+
+        public void VirtualCall_InferredThrow_DoesNotReportExc003()
+        {
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(VirtualCall_InferredThrow_DoesNotReportExc003)));
 
             Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Does.Not.Contain("EXC003"));
         }

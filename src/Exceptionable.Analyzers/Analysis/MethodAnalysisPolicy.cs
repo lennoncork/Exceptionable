@@ -10,9 +10,7 @@ namespace Exceptionable.Analyzers.Analysis
     {
         internal static bool IsSupportedMethod(IMethodSymbol method)
         {
-            if (method.IsAsync ||
-                method.MethodKind == MethodKind.AnonymousFunction ||
-                method.MethodKind == MethodKind.LocalFunction)
+            if (method.IsAsync || method.MethodKind == MethodKind.AnonymousFunction)
             {
                 return false;
             }
@@ -30,6 +28,25 @@ namespace Exceptionable.Analyzers.Analysis
             }
 
             return true;
+        }
+
+        internal static bool HasExecutableBody(IMethodSymbol method)
+        {
+            foreach (SyntaxReference reference in method.DeclaringSyntaxReferences)
+            {
+                switch (reference.GetSyntax())
+                {
+                    case BaseMethodDeclarationSyntax declaration
+                        when declaration.Body is not null || declaration.ExpressionBody is not null:
+                    case LocalFunctionStatementSyntax local
+                        when local.Body is not null || local.ExpressionBody is not null:
+                    case AccessorDeclarationSyntax accessor
+                        when accessor.Body is not null || accessor.ExpressionBody is not null:
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool IsDeferredReturnType(ITypeSymbol returnType)
