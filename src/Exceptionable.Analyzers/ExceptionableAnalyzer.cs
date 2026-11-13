@@ -16,6 +16,7 @@ namespace Exceptionable.Analyzers
         [
             new ThrowContractAnalysis(),
             new CallContractAnalysis(),
+            new CallbackContractAnalysis(),
             new UnnecessaryCatchAnalysis(),
         ];
 
@@ -61,7 +62,8 @@ namespace Exceptionable.Analyzers
                     SymbolKind.Method,
                     SymbolKind.NamedType,
                     SymbolKind.Property,
-                    SymbolKind.Event);
+                    SymbolKind.Event,
+                    SymbolKind.Parameter);
             });
         }
     }

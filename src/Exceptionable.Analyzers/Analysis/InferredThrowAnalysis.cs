@@ -119,7 +119,7 @@ namespace Exceptionable.Analyzers.Analysis
         private ClassifiedThrow classify(IThrowOperation throwOperation, IMethodSymbol method)
         {
             if (this.exceptionBaseType is null ||
-                OperationScope.IsIgnored(throwOperation) ||
+                OperationScope.IsHiddenFrom(throwOperation, method) ||
                 !this.reachability.IsReachable(throwOperation))
             {
                 return ClassifiedThrow.None;
@@ -177,12 +177,14 @@ namespace Exceptionable.Analyzers.Analysis
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (operation is ILocalFunctionOperation or IAnonymousFunctionOperation or INameOfOperation)
+            if (operation is INameOfOperation ||
+                operation is IAnonymousFunctionOperation ||
+                (operation is ILocalFunctionOperation localFunction && !localFunction.Symbol.IsSameMethod(caller)))
             {
                 return;
             }
 
-            if (!OperationScope.IsIgnored(operation) && this.reachability.IsReachable(operation))
+            if (!OperationScope.IsHiddenFrom(operation, caller) && this.reachability.IsReachable(operation))
             {
                 this.collectTargets(operation, caller, contracts, types, OperationTargetResolver.GetTargetMethods(operation), false);
                 this.collectTargets(operation, caller, contracts, types, OperationTargetResolver.GetPatternMethods(operation), true);
@@ -204,7 +206,7 @@ namespace Exceptionable.Analyzers.Analysis
         {
             foreach (IMethodSymbol target in targets)
             {
-                if (target.IsSameMethod(caller) || !this.isAnalyzableTarget(target, operation, allowDeferredReturn))
+                if (target.IsSameMethod(caller) || !this.isAnalyzableTarget(target, operation, contracts, allowDeferredReturn))
                 {
                     continue;
                 }
@@ -222,15 +224,10 @@ namespace Exceptionable.Analyzers.Analysis
         private bool isAnalyzableTarget(
             IMethodSymbol target,
             IOperation operation,
+            ContractResolver contracts,
             bool allowDeferredReturn)
         {
-            if (!MethodAnalysisPolicy.HasCertainDispatch(target, operation) ||
-                !this.isSupportedMethod(target))
-            {
-                return false;
-            }
-
-            return allowDeferredReturn || !MethodAnalysisPolicy.IsDeferredReturnType(target.ReturnType);
+            return CallCheck.IsChecked(target, operation, this.isSupportedMethod, contracts, allowDeferredReturn);
         }
 
         private static void addObserved(List<INamedTypeSymbol> types, INamedTypeSymbol exceptionType)

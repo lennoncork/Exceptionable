@@ -390,19 +390,23 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
-        public void LocalFunctionThrow_DoesNotEscapeOuterMethod()
+        public void LocalFunctionCall_ReportsExc003()
         {
-            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(LocalFunctionThrow_DoesNotEscapeOuterMethod)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(LocalFunctionCall_ReportsExc003)));
 
-            Assert.That(diagnostics, Is.Empty);
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("System.InvalidOperationException"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC001"));
         }
 
         [Test]
-        public void LambdaThrow_DoesNotEscapeOuterMethod()
+        public void LambdaInvocation_ReportsExc003()
         {
-            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(LambdaThrow_DoesNotEscapeOuterMethod)));
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(AnalyzerTestHarness.GetTestCase(nameof(LambdaInvocation_ReportsExc003)));
 
-            Assert.That(diagnostics, Is.Empty);
+            Diagnostic diagnostic = diagnostics.Single(item => item.Id == "EXC003");
+            Assert.That(diagnostic.GetMessage(), Does.Contain("System.InvalidOperationException"));
+            Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC001"));
         }
 
         [Test]

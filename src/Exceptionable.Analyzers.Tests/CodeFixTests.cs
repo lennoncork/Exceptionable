@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
@@ -60,6 +61,46 @@ namespace Exceptionable.Analyzers.Tests
             string source = AnalyzerTestHarness.GetTestCase("CodeFix_Exc003_DoesNotThrow");
 
             Assert.That(applyFixes(source, new AddThrowsCodeFixProvider(), "EXC003"), Is.Empty);
+        }
+
+        [Test]
+        public void Exc002_AddsTheEscapingExceptionToTheContract()
+        {
+            string source = AnalyzerTestHarness.GetTestCase(nameof(Exc002AnalyzerTests.ThrowsMethod_ReportsExc002_WhenTypeEscapes));
+
+            string[] results = applyFixes(source, new AddThrowsCodeFixProvider(), "EXC002");
+
+            Assert.That(results, Has.Length.EqualTo(1));
+            Assert.That(results[0], Does.Contain("Throws(\"System.InvalidOperationException\")"));
+            Assert.That(results[0], Does.Contain("Throws(\"System.IO.IOException\")"));
+        }
+
+        [Test]
+        public void Exc006_RemovesTheUnnecessaryTry()
+        {
+            string source = AnalyzerTestHarness.GetTestCase("UnnecessaryCatch_SingleStatement_ReportsExc006");
+
+            string[] results = applyFixes(source, new RemoveUnnecessaryCatchCodeFixProvider(), "EXC006");
+
+            Assert.That(results, Has.Length.EqualTo(1));
+            Assert.That(results[0], Does.Contain("Safe();"));
+            Assert.That(results[0], Does.Not.Contain("catch ("));
+            Assert.That(results[0], Does.Not.Contain("try {"));
+        }
+
+        [Test]
+        public void Exc009_CopiesTheInterfaceThrowsContract()
+        {
+            string source = AnalyzerTestHarness.GetTestCase(nameof(InterfaceContractMatchTests.InterfaceContractMismatch_MissingThrows_ReportsExc009));
+
+            string[] results = applyFixes(source, new MatchInterfaceContractCodeFixProvider(), "EXC009");
+
+            Assert.That(results, Has.Length.EqualTo(1));
+            Assert.That(results[0], Does.Contain("Throws(\"System.IO.IOException\")"));
+            Assert.That(results[0], Does.Contain("public void Execute()"));
+            Assert.That(
+                results[0].Split(["Throws(\"System.IO.IOException\")"], StringSplitOptions.None),
+                Has.Length.EqualTo(3));
         }
 
         private static string normalize(string text) => text.Replace("\r\n", "\n").TrimEnd();

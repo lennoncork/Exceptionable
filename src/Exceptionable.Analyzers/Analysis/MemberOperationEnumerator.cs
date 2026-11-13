@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
+using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
@@ -25,7 +26,7 @@ namespace Exceptionable.Analyzers.Analysis
         {
             foreach (IOperation root in this.EnumerateRoots(method))
             {
-                foreach (IThrowOperation throwOperation in enumerateThrows(root, cancellationToken))
+                foreach (IThrowOperation throwOperation in enumerateThrows(root, method, cancellationToken))
                 {
                     yield return throwOperation;
                 }
@@ -107,6 +108,19 @@ namespace Exceptionable.Analyzers.Analysis
                     }
 
                     break;
+                case LocalFunctionStatementSyntax localFunction:
+                    if (localFunction.Body is { } localBody && model.GetOperation(localBody) is IOperation localBodyOperation)
+                    {
+                        yield return localBodyOperation;
+                    }
+
+                    if (localFunction.ExpressionBody is { } localExpression &&
+                        model.GetOperation(localExpression) is IOperation localExpressionOperation)
+                    {
+                        yield return localExpressionOperation;
+                    }
+
+                    break;
                 case AccessorDeclarationSyntax accessor:
                     if (accessor.Body is { } accessorBody &&
                         model.GetOperation(accessorBody) is IOperation accessorBodyOperation)
@@ -124,10 +138,15 @@ namespace Exceptionable.Analyzers.Analysis
             }
         }
 
-        private static IEnumerable<IThrowOperation> enumerateThrows(IOperation operation, CancellationToken cancellationToken)
+        private static IEnumerable<IThrowOperation> enumerateThrows(
+            IOperation operation,
+            IMethodSymbol owner,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (OperationScope.IsIgnored(operation))
+            if (operation is INameOfOperation ||
+                (operation is ILocalFunctionOperation localFunction && !localFunction.Symbol.IsSameMethod(owner)) ||
+                (operation is IAnonymousFunctionOperation anonymousFunction && !anonymousFunction.Symbol.IsSameMethod(owner)))
             {
                 yield break;
             }
@@ -139,7 +158,7 @@ namespace Exceptionable.Analyzers.Analysis
 
             foreach (IOperation child in operation.ChildOperations)
             {
-                foreach (IThrowOperation nested in enumerateThrows(child, cancellationToken))
+                foreach (IThrowOperation nested in enumerateThrows(child, owner, cancellationToken))
                 {
                     yield return nested;
                 }

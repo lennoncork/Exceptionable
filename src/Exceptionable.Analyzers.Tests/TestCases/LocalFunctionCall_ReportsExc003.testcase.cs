@@ -1,5 +1,5 @@
-// Tests a throw inside a local function. Local functions are outside the outer method's flow.
-// Expected behavior: do not report the throw as escaping the outer method.
+// Tests a throw inside a local function that the outer method calls.
+// Expected behavior: report EXC003 at the call. The throw is not EXC001 on the outer method.
 using Exceptionable;
 class C
 {

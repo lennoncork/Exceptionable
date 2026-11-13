@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -39,6 +40,26 @@ namespace Exceptionable.Analyzers.Analysis
             }
 
             return builder.ToImmutable();
+        }
+
+        /// <summary>
+        /// The method whose contract governs <paramref name="operation"/>. A local function is its own host.
+        /// A lambda is not a host, so the enclosing method does not see operations inside it.
+        /// </summary>
+        internal static ImmutableArray<IMethodSymbol> GetAnalysisHosts(
+            IOperation operation,
+            ISymbol containingSymbol,
+            Func<IMethodSymbol, bool> isSupported)
+        {
+            IMethodSymbol? enclosing = OperationScope.GetEnclosingFunction(operation);
+            if (enclosing is not null)
+            {
+                return enclosing.MethodKind == MethodKind.LocalFunction && isSupported(enclosing)
+                    ? [enclosing]
+                    : [];
+            }
+
+            return [.. GetMethods(containingSymbol).Where(isSupported)];
         }
 
         internal static bool RunsInitializers(IMethodSymbol constructor)

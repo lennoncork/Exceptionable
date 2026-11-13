@@ -77,6 +77,24 @@ namespace Exceptionable.Analyzers.Diagnostics
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC007.md");
 
+        internal static readonly DiagnosticDescriptor CallbackContractViolation = new(
+            "EXC010",
+            "Callback may throw an exception its parameter contract does not allow",
+            "Callback passed for '{0}' may throw '{1}', which its contract does not allow",
+            "Exceptionable",
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC010.md");
+
+        internal static readonly DiagnosticDescriptor CallbackContractTarget = new(
+            "EXC011",
+            "Exception contract on a parameter requires a delegate",
+            "Parameter '{0}' declares an exception contract but its type is not a delegate",
+            "Exceptionable",
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            helpLinkUri: "https://github.com/lennoncork/Exceptionable/blob/main/docs/diagnostics/EXC011.md");
+
         internal static readonly DiagnosticDescriptor InterfaceContractMismatch = new(
             "EXC009",
             "Implementation exception contract does not match interface",
@@ -96,6 +114,8 @@ namespace Exceptionable.Analyzers.Diagnostics
                 UnnecessaryTryCatch,
                 UnusedDeclaredException,
                 RedundantArgumentNullException,
+                CallbackContractViolation,
+                CallbackContractTarget,
                 InterfaceContractMismatch);
     }
 }

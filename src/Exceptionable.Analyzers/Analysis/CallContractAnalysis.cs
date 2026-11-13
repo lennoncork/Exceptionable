@@ -34,8 +34,7 @@ namespace Exceptionable.Analyzers.Analysis
             ExceptionableCompilationContext compilationContext)
         {
             IOperation operation = operationContext.Operation;
-            if (!compilationContext.Options.IsEnabled(operation.Syntax.SyntaxTree) ||
-                OperationScope.IsIgnored(operation))
+            if (!compilationContext.Options.IsEnabled(operation.Syntax.SyntaxTree))
             {
                 return;
             }
@@ -56,8 +55,11 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetMethods(operationContext.ContainingSymbol)
-                .Where(compilationContext.IsSupportedMethod)
+            IMethodSymbol[] hosts = [.. ExecutableHostResolver.GetAnalysisHosts(
+                    operation,
+                    operationContext.ContainingSymbol,
+                    compilationContext.IsSupportedMethod)
+                .Where(host => !OperationScope.IsHiddenFrom(operation, host))
                 .Where(host => compilationContext.Reachability.IsReachable(operation))];
             if (hosts.Length == 0)
             {
@@ -93,6 +95,49 @@ namespace Exceptionable.Analyzers.Analysis
                         targetMethod.GetContractDisplayName(),
                         declaredType.GetExceptionDisplayName()));
                 }
+            }
+
+            if (operation is IInvocationOperation invocation &&
+                invocation.TargetMethod.MethodKind == MethodKind.DelegateInvoke &&
+                CallbackTargets.TryGetEscapingExceptions(
+                    invocation.Instance,
+                    hosts[0],
+                    compilationContext,
+                    out ImmutableArray<INamedTypeSymbol> callbackExceptions))
+            {
+                reportCallbackExceptions(operationContext, invocation, hosts, callbackExceptions, compilationContext);
+            }
+        }
+
+        private static void reportCallbackExceptions(
+            OperationAnalysisContext operationContext,
+            IInvocationOperation invocation,
+            IMethodSymbol[] hosts,
+            ImmutableArray<INamedTypeSymbol> callbackExceptions,
+            ExceptionableCompilationContext compilationContext)
+        {
+            ContractResolver contractResolver = compilationContext.ContractResolver;
+            string targetName = invocation.Instance?.Syntax.ToString() ?? "callback";
+            var reported = new HashSet<string>();
+            foreach (INamedTypeSymbol exceptionType in callbackExceptions)
+            {
+                if (hosts.All(host =>
+                        contractResolver.IsExceptionPermitted(host, exceptionType) ||
+                        ExceptionFlowAnalysis.IsCaught(invocation, exceptionType)))
+                {
+                    continue;
+                }
+
+                string key = exceptionType.GetExceptionDisplayName();
+                if (!reported.Add(key))
+                {
+                    continue;
+                }
+
+                operationContext.ReportDiagnostic(DiagnosticFactory.CallerViolation(
+                    invocation.Syntax.GetLocation(),
+                    targetName,
+                    key));
             }
         }
 
@@ -136,13 +181,12 @@ namespace Exceptionable.Analyzers.Analysis
             ExceptionableCompilationContext compilationContext,
             bool allowDeferredReturn)
         {
-            if (!MethodAnalysisPolicy.HasCertainDispatch(target, operation) ||
-                !compilationContext.IsSupportedMethod(target))
-            {
-                return false;
-            }
-
-            return allowDeferredReturn || !MethodAnalysisPolicy.IsDeferredReturnType(target.ReturnType);
+            return CallCheck.IsChecked(
+                target,
+                operation,
+                compilationContext.IsSupportedMethod,
+                compilationContext.ContractResolver,
+                allowDeferredReturn);
         }
     }
 }

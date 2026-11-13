@@ -16,7 +16,8 @@ namespace Exceptionable.Analyzers.Analysis
             if (symbolContext.Symbol is not IMethodSymbol &&
                 symbolContext.Symbol is not INamedTypeSymbol &&
                 symbolContext.Symbol is not IPropertySymbol &&
-                symbolContext.Symbol is not IEventSymbol)
+                symbolContext.Symbol is not IEventSymbol &&
+                symbolContext.Symbol is not IParameterSymbol)
             {
                 return;
             }
@@ -92,6 +93,22 @@ namespace Exceptionable.Analyzers.Analysis
                     attributeReference,
                     throwsName,
                     describeInvalidName(resolution));
+            }
+
+            if (symbol is IParameterSymbol parameter &&
+                (hasDoesNotThrow || throwsAttributes.Length > 0) &&
+                !CallbackTargets.IsDelegateType(parameter.Type))
+            {
+                Location? location = parameter.Locations.FirstOrDefault(candidate =>
+                    candidate.IsInSource &&
+                    candidate.SourceTree is not null &&
+                    compilationContext.Options.IsEnabled(candidate.SourceTree));
+                if (location is not null)
+                {
+                    symbolContext.ReportDiagnostic(DiagnosticFactory.CallbackContractTarget(
+                        location,
+                        parameter.Name));
+                }
             }
         }
 
