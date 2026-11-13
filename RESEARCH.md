@@ -465,6 +465,223 @@ A referencing compilation matches the same id on the metadata method. A
 closed generic exception display name is not always a metadata type name, so
 resolution of that recorded type can fail. DESIGN.md records that limit.
 
+## Exception-handling smells
+
+This section maps exception-handling smells onto Exceptionable's contract
+model. It is input for the open questions in
+[DESIGN.md](./DESIGN.md). It does not change current behavior.
+
+Checked-exception catalogs from Java are names and examples, not
+requirements. C# has no throws clause, and Exceptionable already limits
+itself to explicit throws and known contracts.
+
+### Instance constructors are expected to throw
+
+The [constructor design guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/constructor)
+say to throw from an instance constructor when construction cannot succeed.
+That page reprints the 2nd edition and notes that a later edition exists;
+the current [best practices for exceptions](https://learn.microsoft.com/en-us/dotnet/standard/exceptions/best-practices-for-exceptions)
+still do not list instance constructors among methods that should not throw.
+[Parameter design](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/parameter-design)
+tells public members to throw `ArgumentException` or a subclass when
+validation fails. `FileStream`, `Uri`, and `Regex` constructors throw for
+reasons other than a bad argument.
+
+[CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+lists the methods that should not throw: property getters, event accessors,
+`Equals`, `GetHashCode`, `ToString`, static constructors, finalizers,
+`Dispose`, equality operators, and implicit conversions. Instance
+constructors are absent. Property getters and event accessors are qualified:
+`InvalidOperationException` (including `ObjectDisposedException`),
+`NotSupportedException`, and, for indexers, `ArgumentException` and
+`KeyNotFoundException` are accepted. The
+[property guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/property)
+say to avoid getter exceptions and then exempt indexers.
+
+Exceptionable already publishes an escaping constructor throw as inferred
+`[Throws]`, including throws in field and property initializers that the
+constructor runs. EXC007 is the extra case for a nullable-redundant
+`ArgumentNullException`. `[DoesNotThrow]` is already valid on a constructor
+or on the type. That is the opt-in for a codebase that wants a no-throw
+constructor. Inferring `[DoesNotThrow]` for every constructor would report
+ordinary argument checks and failing construction as EXC001.
+
+### Static constructors, finalizers, and Dispose
+
+The same constructor page says not to throw from a static constructor. A
+throw is wrapped and the type becomes unusable in the application domain.
+Callers do not invoke the static constructor as a normal call, so recording
+the inner exception as that constructor's `[Throws]` does not tell callers
+what they can catch. A diagnostic belongs on the static constructor and on
+static field initializers. Modeling `TypeInitializationException` on later
+member access is a separate feature.
+
+[CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+says a finalizer throw causes the CLR to fail fast. Callers cannot catch it.
+An explicit `[Throws]` on a finalizer would describe a contract the caller
+never observes.
+
+The [Dispose pattern](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/dispose-pattern)
+says to avoid throwing from `Dispose(bool)` except when the process is
+already corrupted, and never to throw when `disposing` is false, because
+that path runs from a finalizer. `Dispose` runs from `finally`, `using`,
+and `foreach`. The C# specification says an exception that escapes a
+`finally` replaces any exception already being propagated; see
+[finally replacement](#finally-replacement-and-filter-loss) below.
+`using` and `foreach` already treat `Dispose` as a call, so a known
+`Dispose` contract is visible at those sites.
+
+The same Dispose page says to throw `ObjectDisposedException` from members
+that cannot be used after dispose. A class-level
+`[Throws(typeof(ObjectDisposedException))]` already permits that on every
+member. Treating it as an ambient permitted exception would hide it from
+callers.
+
+`IAsyncDisposable.DisposeAsync` waits on the async model. An exception in
+an async method, including one before the first `await`, is stored on the
+returned task.
+
+### Publishing `[DoesNotThrow]` without a closed body
+
+`[DoesNotThrow]` means no exception escapes. A body that calls an
+unspecified member does not prove that. Many framework `Dispose`
+implementations throw. Publishing `[DoesNotThrow]` for every source
+`Dispose`, or for every member that merely lacks an explicit throw, would
+make EXC006 report catches that are still required and would contradict the
+rule that an unspecified call is not non-throwing.
+
+A sound publication is the same bar EXC006 already uses: every reachable
+operation is non-throwing or a `[DoesNotThrow]` call. Real `Dispose`
+methods usually call unspecified cleanup and would not meet that bar. The
+useful rule on those methods is a diagnostic when a known throw or known
+throwing call escapes. External methods, and calls through an unannotated
+interface such as `IDisposable`, stay unspecified.
+
+If a default is added later, an explicit member `[Throws]` or
+`[DoesNotThrow]` wins. A class-level `[Throws]` should not by itself permit
+`Dispose`, a finalizer, or a static constructor to throw. Inferred
+metadata stays ineligible for EXC009, as inferred throws are today.
+
+`Equals`, `GetHashCode`, `ToString`, equality operators, and implicit
+conversions are the same family as `Dispose`: CA1065 says they should not
+throw, and a known escape is worth a diagnostic. Explicit conversion
+operators are expected to throw `OverflowException` or
+`InvalidCastException`, as the
+[CA2201](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2201)
+table describes. Property getters and event accessors need the allowed
+exception families above, so a blanket no-throw default does not fit them.
+
+### Finally replacement and filter loss
+
+The [throw statement](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/statements#13106-the-throw-statement)
+says that when a `finally` throws, processing of the current exception is
+terminated. The [try statement](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/statements#1311-the-try-statement)
+says the new exception propagates and the exception already being
+propagated is lost. DESIGN.md already uses that rule for explicit throws.
+[CA2219](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2219)
+reports a throw in `finally`, a filter, or a fault. Its
+[implementation](https://source.dot.net/Microsoft.CodeAnalysis.NetAnalyzers/Microsoft.CodeQuality.Analyzers/QualityGuidelines/DoNotRaiseExceptionsInExceptionClauses.cs.html)
+only records an `IThrowOperation` inside `finally`. The comment says a C#
+filter cannot throw. A filter can call a throwing method or contain a
+throw expression. Exceptionable can already see a `[Throws]` call in
+`finally`, including `Dispose` from `using` and `foreach`. That is the
+contract-shaped extension of CA2219.
+
+The same try-statement section says that when a filter expression throws,
+that exception is caught and the filter evaluates to false. The original
+exception keeps propagating. The
+[exception-throwing guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/exception-throwing)
+and the
+[user-filtered handler documentation](https://learn.microsoft.com/en-us/dotnet/standard/exceptions/using-user-filtered-exception-handlers)
+state the same runtime result: the filter failure is indistinguishable
+from an explicit `false`. `ExceptionFlowAnalysis.IsCaught` treats only an
+operation in the `try` body as handled, so a throw or known call in the
+filter is eligible for EXC001, EXC002, EXC003, and inferred `[Throws]`.
+An outer `catch` can also suppress that diagnostic when the filter
+exception never leaves the filter. The spec result is that the filter
+exception is discarded.
+
+### Smells already owned by other analyzers
+
+These affect quality and leave the exception type Exceptionable tracks
+unchanged, or they are resource rules rather than contract rules:
+
+- [CA2200](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2200)
+  preserves the stack on `throw;`. The best-practices page shows `throw ex`
+  resetting the stack. The thrown type is the same.
+- [CA2201](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2201)
+  rejects `Exception`, `SystemException`, `ApplicationException`, and
+  runtime-reserved types such as `NullReferenceException` and
+  `IndexOutOfRangeException`. `throw null` is already
+  `NullReferenceException` in this analyzer. A reserved type is a weak
+  contract, and CA2201 already reports the throw.
+- [CA1031](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1031)
+  rejects `catch (Exception)` and a bare `catch`, with a configurable
+  disallowed-name list. A catch that handles a known contract still
+  satisfies EXC003.
+- CA2000, CA2213, and CA1816 track object lifetime and
+  `GC.SuppressFinalize`. They are outside exception contracts.
+
+### Literature names worth keeping
+
+Eiji Adachi Barbosa, Alessandro Garcia, and coauthors describe swallowed
+exceptions and destructive remapping in
+[Categorizing Faults in Exception Handling](https://doi.org/10.1109/SBES.2014.19)
+(SBES 2014). A swallowed exception is a `catch` that ignores the failure,
+including a base-type catch that hides a more specific failure. Destructive
+remapping throws a new exception from the message alone and drops the
+original. They note that hiding the original is sometimes deliberate.
+
+Roberta Coelho, Jonathan Rocha, and Hugo Melo list empty handlers, throws
+from `finally`, and destructive wrapping in
+[A Catalogue of Java Exception Handling Bad Smells and Refactorings](https://www.plopcon.org/pastplops/2018/papers/13.6.pdf)
+(PLoP 2018). The refactorings assume Java's checked exceptions and
+try-with-resources. Use the smell names, and keep the C# rules above as
+the semantics.
+
+Two catch rules could be built on known contracts later. Both need the
+EXC006 closed-body bar, because an unspecified call can throw anything:
+
+- An empty `catch` that handles a known escaping exception and does not
+  observe it. Any other statement, including logging, has to count as
+  handling or the diagnostic fights deliberate recovery.
+- A `catch` type disjoint from every known escaping type. EXC006 already
+  covers a body that cannot throw a tracked exception. This would cover a
+  `catch (FileNotFoundException)` around a body whose only known escape is
+  a different type.
+
+Wrapping that drops `InnerException` changes which type escapes, and the
+existing throw checks already see the new type. The lost inner exception
+is the CA2200 and destructive-remapping issue above.
+
+XML `<exception>` documentation is a weak contract source. It often lists
+exceptions from unspecified callees. A later code fix can copy a
+documentation entry into `[Throws]`. A mismatch warning would be noisy.
+
+Using exceptions as ordinary control flow is real guidance and a poor
+analyzer rule. A local `try`/`catch` of a declared exception is normal
+handling, and the interprocedural pattern is out of scope.
+
+### Priority if one of these is built
+
+1. Stop treating a filter exception as an escaping contract, and report
+   that the filter discarded it.
+2. Report a known escaping exception in `finally`, including a `[Throws]`
+   call and `Dispose` from `using` or `foreach`.
+3. On a source static constructor or finalizer, report a known escaping
+   throw or call. Leave the inner exception off the normal `[Throws]`
+   metadata.
+4. On source `Dispose` and `Dispose(bool)`, report known escapes. Publish
+   `[DoesNotThrow]` only when the body meets the EXC006 bar. Leave
+   external `Dispose` unspecified.
+5. Apply that same diagnostic to `Equals`, `GetHashCode`, `ToString`,
+   equality operators, and implicit conversions.
+6. Add a closed-body dead `catch`, then an empty catch of a known
+   contract, only after the noise is acceptable.
+
+Instance constructors stay on throw inference. `[DoesNotThrow]` on the
+constructor or the type remains the explicit no-throw constructor contract.
+
 ## How this research applies
 
 Exceptionable already uses the split this guide recommends: the public
@@ -480,6 +697,9 @@ above when changing packaging, configuration, or analyzer lifecycle code.
 - Prove each supported exception-flow case with analyzer tests. Do not copy
   broad analyzer abstractions from large repositories before a concrete need
   appears.
+- Use [exception-handling smells](#exception-handling-smells) before adding a
+  no-throw default or a new catch diagnostic. Instance constructors stay on
+  throw inference. The open items are in DESIGN.md.
 - Recheck external sources when selecting package versions or publishing.
   The repository links here are pinned snapshots.
 - GitVersion 6 renames the older deployment modes. `ContinuousDelivery` is the
