@@ -93,7 +93,7 @@ namespace Exceptionable.Analyzers.Polyfills
 
         private NoThrowMatch matchNoThrow(IMethodSymbol method)
         {
-            if (!isNoThrowCandidate(method.Name))
+            if (!isNoThrowCandidate(method))
             {
                 return NoThrowMatch.None;
             }
@@ -119,6 +119,8 @@ namespace Exceptionable.Analyzers.Polyfills
             }
 
             string @namespace = anchor.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+            // A source member is a no-throw call only after it declares [DoesNotThrow]. The anchor
+            // still constrains its body, which is the implementation flag.
             return new NoThrowMatch(caller: !source, implementation: source, @namespace, anchor);
         }
 
@@ -161,23 +163,26 @@ namespace Exceptionable.Analyzers.Polyfills
 
             foreach (INamedTypeSymbol iface in containingType.AllInterfaces)
             {
-                foreach (ISymbol member in iface.GetMembers(definition.Name))
+                foreach (string memberName in memberNames(definition))
                 {
-                    if (member is not IMethodSymbol interfaceMethod ||
-                        containingType.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation ||
-                        !implementation.IsSameMethod(definition))
+                    foreach (ISymbol member in iface.GetMembers(memberName))
                     {
-                        continue;
-                    }
+                        if (member is not IMethodSymbol interfaceMethod ||
+                            containingType.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation ||
+                            !implementation.IsSameMethod(definition))
+                        {
+                            continue;
+                        }
 
-                    IMethodSymbol candidate = (interfaceMethod.ReducedFrom ?? interfaceMethod).OriginalDefinition;
-                    if (this.getDirect(candidate) is not PolyfillApi api || !api.DoesNotThrow)
-                    {
-                        continue;
-                    }
+                        IMethodSymbol candidate = (interfaceMethod.ReducedFrom ?? interfaceMethod).OriginalDefinition;
+                        if (this.getDirect(candidate) is not PolyfillApi api || !api.DoesNotThrow)
+                        {
+                            continue;
+                        }
 
-                    anchor = candidate;
-                    return true;
+                        anchor = candidate;
+                        return true;
+                    }
                 }
             }
 
@@ -255,7 +260,36 @@ namespace Exceptionable.Analyzers.Polyfills
             return types.ToImmutable();
         }
 
-        private static bool isNoThrowCandidate(string name) =>
+        private static bool isNoThrowCandidate(IMethodSymbol method)
+        {
+            if (isNoThrowName(method.Name))
+            {
+                return true;
+            }
+
+            // An explicit implementation's Name is qualified, such as
+            // System.IComparable<System.Int32>.CompareTo. The interface member keeps the short name.
+            foreach (IMethodSymbol implemented in method.ExplicitInterfaceImplementations)
+            {
+                if (isNoThrowName(implemented.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> memberNames(IMethodSymbol method)
+        {
+            yield return method.Name;
+            foreach (IMethodSymbol implemented in method.ExplicitInterfaceImplementations)
+            {
+                yield return implemented.Name;
+            }
+        }
+
+        private static bool isNoThrowName(string name) =>
             name is "Equals" or "GetHashCode" or "ToString" or "CompareTo" or "ReferenceEquals";
 
         private static bool contains(ImmutableArray<INamedTypeSymbol>.Builder types, INamedTypeSymbol type)

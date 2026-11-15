@@ -92,5 +92,52 @@ namespace Exceptionable.Analyzers.Tests
 
             Assert.That(diagnostics, Is.Empty);
         }
+
+        [Test]
+        public void OverrideToString_AnalysisDisabled_DoesNotReportExc009()
+        {
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(OverrideToString_MissingDoesNotThrow_ReportsExc009)),
+                projectSetting: "disable",
+                fileSetting: "disable");
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void OverrideProperty_MissingDoesNotThrow_ReportsExc009()
+        {
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(OverrideProperty_MissingDoesNotThrow_ReportsExc009)));
+
+            Diagnostic diagnostic = diagnostics.Single();
+            Assert.That(diagnostic.Id, Is.EqualTo("EXC009"));
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Missing.Value").And.Contain("Base.Value"));
+            Assert.That(span(diagnostic), Is.EqualTo("Value"));
+        }
+
+        [Test]
+        public void ExplicitCompareTo_MissingDoesNotThrow_ReportsExc009()
+        {
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(ExplicitCompareTo_MissingDoesNotThrow_ReportsExc009)));
+
+            Assert.That(diagnostics.Select(item => item.Id).OrderBy(id => id), Is.EqualTo(new[] { "EXC001", "EXC009" }));
+            Assert.That(
+                diagnostics.Single(item => item.Id == "EXC009").GetMessage(),
+                Does.Contain("CompareTo").And.Contain("IComparable<T>.CompareTo"));
+        }
+
+        [Test]
+        public void DerivedTypeThrows_DoesNotInheritParentDoesNotThrow()
+        {
+            Diagnostic[] diagnostics = AnalyzerTestHarness.GetDiagnostics(
+                AnalyzerTestHarness.GetTestCase(nameof(DerivedTypeThrows_DoesNotInheritParentDoesNotThrow)));
+
+            Assert.That(diagnostics.Select(item => item.Id).OrderBy(id => id), Is.EqualTo(new[] { "EXC001", "EXC009" }));
+        }
+
+        private static string span(Diagnostic diagnostic) =>
+            diagnostic.Location.SourceTree!.GetText().GetSubText(diagnostic.Location.SourceSpan).ToString();
     }
 }

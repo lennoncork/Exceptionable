@@ -723,8 +723,9 @@ Rules:
   A source member covered by a no-throw entry is EXC001 when a known
   exception escapes. That member must declare `[DoesNotThrow]` on itself,
   its property or event, or a type in its hierarchy; otherwise the missing
-  declaration is EXC009. A `[Throws]` on the member does not replace the
-  polyfill. The member is a no-throw call only after that declaration, and
+  declaration is EXC009. An explicit interface implementation is included.
+  A `[Throws]` on the member does not replace the polyfill. The member is a
+  no-throw call only after that declaration, and
   only when dispatch is certain. A throw that escapes is still inferred for
   callers: EXC006 is not reported for that call, because the catch may be
   handling the exception the body actually throws. Compiler-generated
@@ -792,8 +793,8 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 interface precedence. Resolved names, declared contracts, and effective
 contracts are cached for the compilation.
 `Analysis/` contains separate declaration, throw, call, unnecessary-catch,
-and interface-contract-match rules, each implementing `IOperationRule` or
-`ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
+interface-contract-match, and no-throw-declaration rules, each implementing
+`IOperationRule` or `ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
 method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis`
 scans source for the defining compilation, delegating nullable-guard detection
 to `NullableGuardDetector` and operation enumeration to `MemberOperationEnumerator`.

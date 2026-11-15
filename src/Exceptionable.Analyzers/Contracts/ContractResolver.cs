@@ -66,6 +66,11 @@ namespace Exceptionable.Analyzers.Contracts
             return null;
         }
 
+        /// <summary>
+        /// True when the member, its property or event, or the nearest type contract in its
+        /// hierarchy is <c>[DoesNotThrow]</c>. A derived type <c>[Throws]</c> replaces a parent
+        /// type <c>[DoesNotThrow]</c> and does not count.
+        /// </summary>
         internal bool DeclaresDoesNotThrow(IMethodSymbol method)
         {
             if (this.getOwnContract(method).IsDoesNotThrow)
