@@ -20,5 +20,12 @@ namespace Exceptionable.Analyzers.Polyfills
         /// <summary>Describes only the overloads of <paramref name="memberName"/> with <paramref name="parameterCount"/> parameters.</summary>
         protected static PolyfillApi Api(string typeName, string memberName, int parameterCount, params string[] exceptions) =>
             new(typeName, memberName, parameterCount, exceptions);
+
+        /// <summary>
+        /// Describes overloads that must not throw. Parameter count is required so a throwing overload of the
+        /// same name, such as <c>ToString(string)</c>, is not included.
+        /// </summary>
+        protected static PolyfillApi DoesNotThrow(string typeName, string memberName, int parameterCount) =>
+            new(typeName, memberName, parameterCount, [], true);
     }
 }

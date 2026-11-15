@@ -230,7 +230,14 @@ namespace Exceptionable.Analyzers.Analysis
                     return false;
                 }
 
-                return this.compilationContext.ContractResolver.GetEffectiveContract(target).IsDoesNotThrow;
+                ExceptionContract contract = this.compilationContext.ContractResolver.GetEffectiveContract(target);
+                if (contract.HasContract)
+                {
+                    return contract.IsDoesNotThrow;
+                }
+
+                return this.compilationContext.Polyfills.TryGetCallerDoesNotThrowNamespace(target, out string @namespace) &&
+                    this.compilationContext.Options.IsPolyfillEnabled(operation.Syntax.SyntaxTree, @namespace);
             }
         }
 

@@ -132,6 +132,30 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void GetEffectiveContract_DoesNotInheritBaseMethodDoesNotThrow()
+        {
+            string source = AnalyzerTestHarness.GetTestCase("ContractResolver_DoesNotThrowInheritance.Source8");
+            CSharpCompilation compilation = TestCompilation.Create(source);
+            ContractResolver resolver = new(new ExceptionTypeResolver(compilation));
+
+            ExceptionContract safe = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "Derived", "Safe"));
+            ExceptionContract fallible = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "Derived", "Fallible"));
+            ExceptionContract work = resolver.GetEffectiveContract(
+                TestCompilation.GetMethod(compilation, "Child", "Work"));
+
+            Assert.That(safe.HasContract, Is.False);
+            Assert.That(fallible.DeclaredTypes.Single().ToDisplayString(), Is.EqualTo("System.IO.IOException"));
+            Assert.That(work.IsDoesNotThrow, Is.True);
+            Assert.That(
+                resolver.GetDoesNotThrowBaseMethod(TestCompilation.GetMethod(compilation, "Derived", "Safe"))!.Name,
+                Is.EqualTo("Safe"));
+            Assert.That(resolver.DeclaresDoesNotThrow(TestCompilation.GetMethod(compilation, "Child", "Work")), Is.True);
+            Assert.That(resolver.DeclaresDoesNotThrow(TestCompilation.GetMethod(compilation, "Derived", "Safe")), Is.False);
+        }
+
+        [Test]
         public void GetEffectiveContract_ExplicitContractReplacesInferredThrows()
         {
             string implicitSource = AnalyzerTestHarness.GetTestCase("GetEffectiveContract_ExplicitContractReplacesInferredThrows.Source7");

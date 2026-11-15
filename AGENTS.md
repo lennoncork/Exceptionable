@@ -96,7 +96,7 @@ a task is split out of that file.
 - Store every C# source snippet compiled or analyzed by a unit test in a named
   `src/Exceptionable.Analyzers.Tests/TestCases/*.testcase.cs` file, including
   snippets in lower-level Roslyn and multi-assembly generator tests. Load them
-  with `ExceptionableAnalyzerTests.GetTestCase`; keep assertions in the test
+  with `AnalyzerTestHarness.GetTestCase`; keep assertions in the test
   method. Begin each fixture with a brief comment describing the scenario and
   expected behavior, and use separate fixtures for separate compilation inputs.
 - Use `build.cake` as the entry point for build, test, and pack workflows.

@@ -48,6 +48,50 @@ namespace Exceptionable.Analyzers.Contracts
             this.GetEffectiveContract(method).IsDoesNotThrow ||
             this.GetImplementedInterfaceContracts(method).Any(contract => contract.IsDoesNotThrow);
 
+        /// <summary>
+        /// A base method <c>[DoesNotThrow]</c> is a requirement on each override. It is not the
+        /// override's published contract until the override, its property or event, or a type in
+        /// its hierarchy declares <c>[DoesNotThrow]</c>.
+        /// </summary>
+        internal IMethodSymbol? GetDoesNotThrowBaseMethod(IMethodSymbol method)
+        {
+            for (IMethodSymbol? current = method.OverriddenMethod; current is not null; current = current.OverriddenMethod)
+            {
+                if (this.getOwnContract(current).IsDoesNotThrow)
+                {
+                    return current;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// True when the member, its property or event, or the nearest type contract in its
+        /// hierarchy is <c>[DoesNotThrow]</c>. A derived type <c>[Throws]</c> replaces a parent
+        /// type <c>[DoesNotThrow]</c> and does not count.
+        /// </summary>
+        internal bool DeclaresDoesNotThrow(IMethodSymbol method)
+        {
+            if (this.getOwnContract(method).IsDoesNotThrow)
+            {
+                return true;
+            }
+
+            for (INamedTypeSymbol? type = method.ContainingType; type is not null; type = type.BaseType)
+            {
+                ExceptionContract typeContract = this.GetDirectContract(type);
+                if (!typeContract.HasContract)
+                {
+                    continue;
+                }
+
+                return typeContract.IsDoesNotThrow;
+            }
+
+            return false;
+        }
+
         internal bool IsExceptionPermitted(IMethodSymbol method, ITypeSymbol exceptionType)
         {
             if (this.IsEffectivelyDoesNotThrow(method))
@@ -124,20 +168,20 @@ namespace Exceptionable.Analyzers.Contracts
 
             for (IMethodSymbol? current = method; current is not null; current = current.OverriddenMethod)
             {
-                ExceptionContract methodContract = this.GetDirectContract(current);
-                if (methodContract.HasContract)
+                ExceptionContract own = this.getOwnContract(current);
+                if (!own.HasContract)
                 {
-                    return methodContract;
+                    continue;
                 }
 
-                if (current.AssociatedSymbol is ISymbol associated)
+                // A base [DoesNotThrow] obligates the override to declare it. It is not inherited
+                // as the override's contract. A base [Throws] still applies until the override replaces it.
+                if (!SymbolEqualityComparer.Default.Equals(current, method) && own.IsDoesNotThrow)
                 {
-                    ExceptionContract associatedContract = this.GetDirectContract(associated);
-                    if (associatedContract.HasContract)
-                    {
-                        return associatedContract;
-                    }
+                    break;
                 }
+
+                return own;
             }
 
             if (method.ContainingType.TypeKind == TypeKind.Interface)
@@ -155,6 +199,26 @@ namespace Exceptionable.Analyzers.Contracts
                 if (typeContract.HasContract)
                 {
                     return typeContract;
+                }
+            }
+
+            return ExceptionContract.Unspecified;
+        }
+
+        private ExceptionContract getOwnContract(IMethodSymbol method)
+        {
+            ExceptionContract methodContract = this.GetDirectContract(method);
+            if (methodContract.HasContract)
+            {
+                return methodContract;
+            }
+
+            if (method.AssociatedSymbol is ISymbol associated)
+            {
+                ExceptionContract associatedContract = this.GetDirectContract(associated);
+                if (associatedContract.HasContract)
+                {
+                    return associatedContract;
                 }
             }
 

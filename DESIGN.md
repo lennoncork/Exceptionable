@@ -181,10 +181,25 @@ type parameter is rejected by the compiler and is not a contract.
   attribution on the implementation must match the interface member. Throw
   and call checks still use the intersection described below; EXC009 does
   not replace those diagnostics. An unannotated interface member does not
-  require the implementation to be unannotated. Class virtual and override
-  replacement remains allowed and is not EXC009. When one method implements
+  require the implementation to be unannotated. When one method implements
   several interface members, each mismatched member is reported. Explicit
   implementations can match each interface separately.
+- A source override of a method whose own contract is `[DoesNotThrow]` must
+  declare `[DoesNotThrow]` on the override, its property or event, or a class
+  or struct in its type hierarchy. A `[DoesNotThrow]` on a parent class or
+  struct is inherited by derived members and satisfies that requirement. The
+  override does not publish the base method's `[DoesNotThrow]` until it
+  declares one: a certain call of the undecorated override is not a
+  `[DoesNotThrow]` call. The base requirement still constrains the body, so
+  an escaping throw is EXC001 even when the override declares `[Throws]`.
+  Omitting the attribute, or declaring a different contract, is EXC009. A
+  base method `[Throws]` is still inherited when the override declares
+  nothing, and an override may still replace that `[Throws]` set. A different
+  signature, such as `ToString(string)`, does not inherit parameterless
+  `ToString`. Compiler-generated members, including a record's synthesized
+  `ToString`, `Equals`, and `GetHashCode`, are not EXC009. A no-throw
+  polyfill (section 9) is the same requirement for a source override or
+  implementation of that member.
 - Accessor declarations may carry method-targeted attributes. A property or
   event contract applies to its accessors unless an accessor declares its own
   contract. Analyzer call checks include property get/set and event add/remove
@@ -204,8 +219,9 @@ type parameter is rejected by the compiler and is not a contract.
 - A method-level `[DoesNotThrow]` overrides a class-level `[Throws]` list.
 - A method-level `[Throws]` overrides class-level `[DoesNotThrow]`.
 - A contract declared on a derived type replaces the base type contract. A
-  contract declared on an override replaces the base method contract. Neither
-  replacement is a conflict with attributes that remain declared only on the
+  contract declared on an override replaces a base method `[Throws]` contract.
+  An override does not replace a base method `[DoesNotThrow]` contract.
+  Neither case is a conflict with attributes that remain declared only on the
   base.
 - Applying both attributes at the same declaration is invalid and reported.
   That includes a property, event, or parameter that carries both attributes.
@@ -355,13 +371,18 @@ exception the analyzer recognizes or cannot rule out. `nameof` does not
 invoke the named member. Lambdas and local functions are not treated as
 invoked by the try body. Invoking a delegate parameter whose direct contract
 is `[DoesNotThrow]` is a non-throwing call for EXC006. A virtual
-`[DoesNotThrow]` is not, because dispatch is uncertain.
+`[DoesNotThrow]` is not, because dispatch is uncertain. A no-throw polyfill
+(section 9) is proven on the same terms when the selected member is the
+catalogued member or a same-assembly member that is not declared in source.
+A source override is a no-throw call only when that override, or a type in
+its hierarchy, declares `[DoesNotThrow]`.
 
 An open virtual or unsealed override call is checked only for the explicit
 `[Throws]` set on the statically selected method. An inferred throw on that
-method, and `[DoesNotThrow]` on that method, are not enforced at the call,
-because an override can replace them. `base` access, a sealed method, and a
-method on a sealed type use the selected member in full. An abstract method
+method, and `[DoesNotThrow]` on that method, are not enforced at the call.
+An override can replace the inferred throw, and a `[DoesNotThrow]` on the
+selected method is not proof of every override. `base` access, a sealed
+method, and a method on a sealed type use the selected member in full. An abstract method
 is checked only when it declares `[Throws]` and its return is not deferred.
 
 These meanings apply to synchronous, non-iterator methods. `[Throws]` on an
@@ -528,7 +549,7 @@ categories, default severities, and help links. The catalog is
 | EXC006 | A `try`/`catch` is unnecessary because every reachable operation in its body is non-throwing or a `[DoesNotThrow]` call, and at least one such call is reachable. | Warning |
 | EXC007 | A constructor throws `ArgumentNullException` for a non-nullable reference parameter while nullable annotations are enabled; the guard may be redundant with the nullable contract, which is not runtime validation. | Warning |
 | EXC008 | A `[Throws]` type does not escape, and the member produces some other known escaping exception. Remove the stale declaration or restore a throw or call that produces it. | Warning |
-| EXC009 | A source implementation's declared `[Throws]` or `[DoesNotThrow]` contract does not match an implemented interface member. | Warning |
+| EXC009 | A source implementation's declared contract does not match an implemented interface member, or a source override does not declare a `[DoesNotThrow]` required by a base method or a no-throw polyfill. | Warning |
 | EXC010 | A lambda, anonymous method, local function, or method group passed for a delegate parameter may throw an exception that parameter's contract does not allow. | Warning |
 | EXC011 | `[Throws]` or `[DoesNotThrow]` is applied to a parameter whose type is not a delegate. | Error |
 
@@ -540,8 +561,8 @@ covered by the inferred set is not EXC002. A nullable-redundant constructor
 exception types with their namespace-qualified display names, so two exceptions that share a
 short name stay distinct. Diagnostics identify the relevant throw or call
 site. Avoid diagnostics for exception sources with no known contract.
-EXC009 reports the implementing member when its declared contract is not
-equivalent to the interface member's declared contract. EXC010 reports the
+EXC009 reports the member when its declared contract is not the required
+`[Throws]` or `[DoesNotThrow]` contract. EXC010 reports the
 callback argument. EXC011 reports the parameter.
 
 ## 9. Analysis configuration
@@ -616,8 +637,10 @@ turn analysis on. The parser behavior and links are in
 Framework and third-party methods carry no `[Throws]` metadata, so most real
 exception sources would otherwise stay unspecified. Exceptionable fills that
 gap with **polyfills**: a curated catalog, built into the analyzer, of the
-exceptions specific external APIs may throw. A polyfill behaves as if the
-external member carried `[Throws]` for the listed types.
+exceptions specific external APIs may throw, and of members whose contract is
+that they do not throw. A throwing entry behaves as if the external member
+carried `[Throws]` for the listed types. A no-throw entry behaves as if it
+carried `[DoesNotThrow]`.
 
 **Decision:** the analyzer does not read XML documentation comments for
 exception information. XML documentation is incomplete, inconsistent about
@@ -636,12 +659,14 @@ Rules:
   registering it in `PolyfillCatalog`.
 - **Enabled by default, with opt-out.** Polyfills are on whenever analysis
   is enabled; a project that enabled analysis gets framework coverage without
-  extra setup. Because a new catalog entry can add EXC003 diagnostics in a
-  later analyzer version, every entry must be conservative and correct, and
-  any namespace or the whole catalog can be turned off. Polyfills never apply
-  when analysis itself is disabled.
+  extra setup. Because a new catalog entry can add EXC003, EXC006, or EXC001
+  diagnostics in a later analyzer version, every entry must be conservative
+  and correct, and any namespace or the whole catalog can be turned off.
+  Polyfills never apply when analysis itself is disabled.
 - **Developers have the final say.** Enablement is resolved per source file
-  for the namespace of the called member, in this order:
+  for the catalog namespace of the entry. A no-throw entry inherited from an
+  anchor uses that anchor's namespace, so `exceptionable_polyfill.System`
+  covers `ToString` on a type in another namespace. The order is:
   1. `exceptionable_polyfill.<namespace> = enable|disable` in
      `.editorconfig`. The most specific namespace wins, so
      `exceptionable_polyfill.System.IO` overrides
@@ -656,27 +681,66 @@ Rules:
   Keys are not case sensitive. A catalog entry never overrides an explicit
   `[Throws]` or `[DoesNotThrow]` contract or an inferred contract recorded in
   the referenced assembly.
-- **Source members are never matched.** A polyfill applies only to members
-  without declaring syntax in the compilation.
-- **What an entry lists.** The exceptions a member throws for valid arguments
-  because of the state of the environment or its inputs, such as
+- **Source members are never matched by name.** A catalog row applies only to
+  a member without declaring syntax. A no-throw row also applies to an
+  override or interface implementation in the same assembly, and to a source
+  override or interface implementation in the compilation being analyzed.
+  An external override in another assembly stays unspecified: the catalog
+  cannot see that body.
+- **What a throwing entry lists.** The exceptions a member throws for valid
+  arguments because of the state of the environment or its inputs, such as
   `IOException` from `File.ReadAllText` or `InvalidOperationException` from
   `Enumerable.First` on an empty sequence. An entry lists the most useful
   covering type: `IOException` covers `FileNotFoundException`. It omits
   `ArgumentNullException`, which nullable analysis owns. An entry can be
   limited to overloads by parameter count when overloads differ.
-- **Reporting.** A polyfilled call is checked like an annotated call and is
+- **What a no-throw entry lists.** One member that must not let an exception
+  escape, limited by parameter count so a throwing overload is not included.
+  The rows are parameterless `Object.ToString`, `Object.Equals(object)`,
+  `Object.GetHashCode`, `Object.ReferenceEquals`, `IEquatable<T>.Equals`,
+  `IComparable<T>.CompareTo`, and `IEqualityComparer<T>.Equals`.
+  Same-assembly overrides follow the anchor, which covers `String` and the
+  primitive numeric types without a row per type. These are not entries,
+  because their documented contract allows an exception or the framework
+  implementation throws: format `ToString` overloads (`FormatException`);
+  static `Object.Equals(object, object)` (it calls the instance method);
+  non-generic `IComparable.CompareTo(object)` and non-generic
+  `IEqualityComparer.Equals` (`ArgumentException`); `IComparer<T>.Compare`
+  and `Comparer<T>.Compare` (`ArgumentException` when `T` is not comparable);
+  `GetHashCode` methods that take an argument (`ArgumentNullException`).
+  Property getters, event accessors, `Dispose`, static constructors,
+  finalizers, equality operators, and implicit conversions are also omitted.
+  [CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+  treats several of those as unexpected throw sites, but the framework itself
+  throws from getters, `Dispose`, and some operators. The links and the
+  narrower catalog choice are in [RESEARCH.md](./RESEARCH.md).
+- **Reporting.** A throwing entry is checked like an annotated call and is
   EXC003. It is not inferred onto its caller and is not a `[DoesNotThrow]`
-  call, so EXC006 and EXC008 are unchanged.
+  call, so EXC006 and EXC008 are unchanged for that call. A no-throw entry
+  adds no thrown type. When the callee has no explicit or inferred contract
+  and dispatch is certain, the call is a `[DoesNotThrow]` call for EXC006.
+  An open virtual or unsealed override stays unchecked, as in section 6.
+  A source member covered by a no-throw entry is EXC001 when a known
+  exception escapes. That member must declare `[DoesNotThrow]` on itself,
+  its property or event, or a type in its hierarchy; otherwise the missing
+  declaration is EXC009. An explicit interface implementation is included.
+  A `[Throws]` on the member does not replace the polyfill. The member is a
+  no-throw call only after that declaration, and
+  only when dispatch is certain. A throw that escapes is still inferred for
+  callers: EXC006 is not reported for that call, because the catch may be
+  handling the exception the body actually throws. Compiler-generated
+  members are not EXC009.
 - **Per compilation.** The catalog is static data (names only). Exception
   symbols are resolved per compilation and are not retained across
   compilations. A type absent from a compilation drops that entry.
 
-The catalog covers `System` (`Parse` members), `System.Collections.Generic`,
-`System.IO`, `System.Linq`, and `System.Threading.Tasks`; the user-facing
-list is in [docs/README.md](./docs/README.md#framework-polyfills). A missing
+The catalog covers `System` (`Parse` members and the no-throw `Object`,
+`IEquatable<T>`, and `IComparable<T>` members), `System.Collections.Generic`
+(including `IEqualityComparer<T>.Equals`), `System.IO`, `System.Linq`, and
+`System.Threading.Tasks`; the user-facing list is in
+[docs/README.md](./docs/README.md#framework-polyfills). A missing
 API is requested with an issue naming the namespace, type, member, and the
-documented exception.
+documented exception or the no-throw contract.
 
 **Async and LINQ.** The same catalog is the mechanism for both, in stages:
 
@@ -729,8 +793,8 @@ The `Contracts/` area contains the normalized `ExceptionContract`,
 interface precedence. Resolved names, declared contracts, and effective
 contracts are cached for the compilation.
 `Analysis/` contains separate declaration, throw, call, unnecessary-catch,
-and interface-contract-match rules, each implementing `IOperationRule` or
-`ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
+interface-contract-match, and no-throw-declaration rules, each implementing
+`IOperationRule` or `ISymbolRule` and registered by `ExceptionableAnalyzer`, plus exception-flow, operation-target,
 method-policy, reachability, and inferred-throw components. `InferredThrowAnalysis`
 scans source for the defining compilation, delegating nullable-guard detection
 to `NullableGuardDetector` and operation enumeration to `MemberOperationEnumerator`.
@@ -750,9 +814,11 @@ asset loads it with the analyzer.
 It does not add a public attribute to the Exceptionable package.
 `Polyfills/` contains one `PolyfillModule` per namespace, the
 `PolyfillCatalog` that registers them, and the per-compilation
-`PolyfillResolver` that maps a method to exception symbols.
-`CallContractAnalysis` consults it only for a method without an explicit or
-inferred contract, after `AnalysisOptions.IsPolyfillEnabled` allows it.
+`PolyfillResolver` that maps a method to exception symbols or to a no-throw
+entry. `CallContractAnalysis` consults throwing entries only for a method
+without an explicit or inferred contract. `UnnecessaryCatchAnalysis` and
+`ThrowContractAnalysis` consult no-throw entries. Each check runs only after
+`AnalysisOptions.IsPolyfillEnabled` allows the anchor namespace.
 `Diagnostics/` owns the descriptors and `DiagnosticFactory`, which defines each rule's message arguments and diagnostic properties. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
@@ -788,12 +854,17 @@ phase 4 documentation:
   exceptions. A `[Throws]` member with no known escaping exception is left
   unchanged.
 - EXC009 warns when a source implementation does not declare the same
-  `[Throws]` or `[DoesNotThrow]` contract as an implemented interface member.
+  `[Throws]` or `[DoesNotThrow]` contract as an implemented interface member,
+  and when a source override does not declare `[DoesNotThrow]` required by a
+  base method or an enabled no-throw polyfill. A parent type `[DoesNotThrow]`
+  satisfies the override. The override does not publish a base method
+  `[DoesNotThrow]` until it declares one.
 - Code fixes ship in `Exceptionable.Analyzers.CodeFixes`: remove a stale
   `[Throws]` for EXC008; add `[Throws("<type>")]` for EXC002 and EXC003;
   remove an unnecessary `try`/`catch` for EXC006, keeping `finally`; and copy
   an interface `[Throws]` or `[DoesNotThrow]` onto an implementation that has
-  no direct contract for EXC009. The add-`[Throws]` fix is not offered inside
+  no direct contract for EXC009, including `[DoesNotThrow]` on an override of
+  a no-throw member. The add-`[Throws]` fix is not offered inside
   lambdas, on `[DoesNotThrow]` members, for a closed generic exception type,
   or when the `Throws` attribute is not available. The EXC009 fix is not a
   batch fix and skips a generic exception type whose display name contains
@@ -810,6 +881,15 @@ phase 4 documentation:
   method is async or an iterator. A body-less deferred signature stays
   deferred. An open virtual or unsealed override is checked only for its
   explicit `[Throws]` set.
+- No-throw polyfill entries cover parameterless `ToString`, `Equals`,
+  `GetHashCode`, `ReferenceEquals`, `IEquatable<T>.Equals`,
+  `IEqualityComparer<T>.Equals`, and `IComparable<T>.CompareTo`, including
+  same-assembly overrides. A certain call of a catalogued member, or of a
+  same-assembly member that is not declared in source, is EXC006. A source
+  override or implementation must declare `[DoesNotThrow]` (EXC009) before
+  its own call is EXC006. A known exception that escapes that member is
+  EXC001, including when the member declares `[Throws]`. Documented throwing
+  overloads and open virtual calls stay unchecked.
 
 Still open:
 
@@ -828,9 +908,9 @@ Still open:
 - Async/await observation and iterator `MoveNext` observation remain open.
   The polyfill catalog covers only synchronous and blocking members until
   then (section 9). Inferred throws and `[DoesNotThrow]` on open virtual and
-  unsealed override calls also remain unchecked. EXC009 covers interface
-  implementations only; class virtual and override contract replacement stays
-  allowed.
+  unsealed override calls also remain unchecked. An override may still
+  replace a base method `[Throws]` contract. It may not drop a base method
+  `[DoesNotThrow]` or a no-throw polyfill; that mismatch is EXC009.
 
 ## 12. Testing strategy and acceptance criteria
 
@@ -882,7 +962,11 @@ Minimum acceptance criteria for the initial usable release:
 - A source implementation that omits or changes an implemented interface
   `[Throws]` or `[DoesNotThrow]` contract is EXC009. A matching declaration
   on the member, its property or event, an inherited override, or the
-  containing type is accepted. An inferred throw is not a match.
+  containing type is accepted. An inferred throw is not a match. A source
+  override that omits `[DoesNotThrow]` required by a base method or an
+  enabled no-throw polyfill is the same warning. A `[DoesNotThrow]` on the
+  member, its property or event, or a type in its hierarchy is accepted. The
+  base method's attribute alone is not.
 - A referencing compilation reports EXC003 for an inferred contract recorded
   in a referenced assembly, without that member's source.
 - A nullable-aware constructor that throws `ArgumentNullException` for a
@@ -903,6 +987,11 @@ Minimum acceptance criteria for the initial usable release:
   abstract method with the same return type and `[Throws]` is not.
 - An open virtual call reports EXC003 for the explicit `[Throws]` set on the
   statically selected method. An inferred-only virtual throw is not EXC003.
+- A no-throw polyfill call with certain dispatch reports EXC006. The same
+  shape around an open virtual call, a documented throwing overload, or a
+  callee with an inferred throw does not. A source override or interface
+  implementation that lets a known exception escape is EXC001 unless it
+  declares an explicit contract.
 - The analyzer builds, loads in a consumer project, and runs without
   diagnostics caused by the analyzer itself.
 - Tests explicitly capture unsupported cases so future phases can expand
@@ -957,12 +1046,15 @@ The initial implementation confirms these decisions:
   redeclares a base member and has no contract of its own keeps the base
   contract; several base contracts intersect, and an empty intersection is
   `[DoesNotThrow]`.
-- A derived type contract replaces a base type contract, and an override's
-  contract replaces the base method contract. An open virtual or unsealed
-  override call is checked only for the explicit `[Throws]` set on the
-  statically selected method. Inferred throws and `[DoesNotThrow]` on those
-  members stay unchecked. Sealed methods, methods on sealed types, and
-  `base` access are checked as the selected member. An abstract method is
+- A derived type contract replaces a base type contract. An override's
+  contract replaces a base method `[Throws]` contract. A base method
+  `[DoesNotThrow]` is not that published contract until the override declares
+  `[DoesNotThrow]`; the body is still EXC001 when a known exception escapes.
+  An open virtual or unsealed override call is checked only for the explicit
+  `[Throws]` set on the statically selected method. Inferred throws and
+  `[DoesNotThrow]` on those members stay unchecked. Sealed methods, methods
+  on sealed types, and `base` access are checked as the selected member. An
+  abstract method is
   checked when it declares `[Throws]` and its return is not deferred.
 - A short exception name is an error when more than one exception type uses
   it. EXC004 says that the name is ambiguous. An unresolved name uses the

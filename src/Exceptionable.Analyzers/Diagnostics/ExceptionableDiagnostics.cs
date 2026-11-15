@@ -8,7 +8,7 @@ namespace Exceptionable.Analyzers.Diagnostics
         internal static readonly DiagnosticDescriptor DoesNotThrowEscapes = new(
             "EXC001",
             "Exception escapes a [DoesNotThrow] contract",
-            "Exception type '{0}' escapes a method marked [DoesNotThrow]",
+            "Exception type '{0}' escapes a [DoesNotThrow] contract",
             "Exceptionable",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
@@ -97,8 +97,8 @@ namespace Exceptionable.Analyzers.Diagnostics
 
         internal static readonly DiagnosticDescriptor InterfaceContractMismatch = new(
             "EXC009",
-            "Implementation exception contract does not match interface",
-            "The exception contract of '{0}' does not match implemented member '{1}'",
+            "Exception contract does not match a required member",
+            "The exception contract of '{0}' does not match '{1}'",
             "Exceptionable",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true,

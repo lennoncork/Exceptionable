@@ -5,6 +5,11 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Exceptionable.Analyzers.Analysis
 {
+    /// <summary>
+    /// Reports EXC009 when a source implementation does not declare the same contract as an
+    /// interface member. No-throw overrides and polyfill implementations are
+    /// <see cref="NoThrowDeclarationAnalysis"/>.
+    /// </summary>
     internal sealed class InterfaceContractMatchAnalysis : ISymbolRule
     {
         public void Analyze(
@@ -37,7 +42,7 @@ namespace Exceptionable.Analyzers.Analysis
                 return;
             }
 
-            Location? location = getReportLocation(method, compilationContext);
+            Location? location = ContractReportLocation.TryGet(method, compilationContext);
             if (location is null)
             {
                 return;
@@ -63,30 +68,6 @@ namespace Exceptionable.Analyzers.Analysis
                     interfaceMember.GetQualifiedContractDisplayName(),
                     implementationDeclaresContract ? null : interfaceContract));
             }
-        }
-
-        private static Location? getReportLocation(
-            IMethodSymbol method,
-            ExceptionableCompilationContext compilationContext)
-        {
-            ISymbol target = method;
-            if (method.AssociatedSymbol is ISymbol associated &&
-                !compilationContext.ContractResolver.GetDirectContract(method).HasContract)
-            {
-                target = associated;
-            }
-
-            foreach (Location location in target.Locations)
-            {
-                if (location.IsInSource &&
-                    location.SourceTree is SyntaxTree tree &&
-                    compilationContext.Options.IsEnabled(tree))
-                {
-                    return location;
-                }
-            }
-
-            return null;
         }
     }
 }

@@ -25,6 +25,7 @@ namespace Exceptionable.Analyzers
             new ContractDeclarationAnalysis(),
             new UnusedDeclaredExceptionAnalysis(),
             new InterfaceContractMatchAnalysis(),
+            new NoThrowDeclarationAnalysis(),
         ];
 
         /// <inheritdoc />
