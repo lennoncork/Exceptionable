@@ -401,10 +401,26 @@ relying on a claim.
   in DESIGN.md section 9.
 - **ThrowsAnalyzer** —
   [repository](https://github.com/wieslawsoltes/ThrowsAnalyzer/tree/286f79a35d0d64c540851eb29f0833eb9a100234)
-  (MIT). Its README lists 30 diagnostics and 16 code fixes across throw
-  statements, unhandled exceptions, async, iterator, and lambda patterns, plus
-  a CLI. It focuses on handling patterns and documentation rather than
-  declared contracts.
+  (MIT, NuGet `ThrowsAnalyzer`, last push 2025-11-08). Audited at that
+  revision. It is a pattern linter. There is no `[Throws]` attribute.
+  `AnalyzerReleases.Shipped.md` lists 22 rules (THROWS001–004, 007–010,
+  017–030); the README’s “30 diagnostics” counts the missing IDs. Flow
+  (THROWS017–019) walks syntax for `throw` and for direct calls and
+  `new T()` in source methods. A member with no declaring syntax, including
+  the BCL, contributes an empty flow. Catch matching is method-wide: any
+  catch of a compatible type removes every throw of that type, and `when`
+  filters are stored and then ignored. The tracker blocks the analyzer
+  thread with `Task.Run(...).GetResult()` while concurrent execution is
+  enabled, and the recursion placeholder can publish an empty or
+  half-built flow. `RoslynAnalyzer.Core` has a control-flow graph, used by
+  the sibling disposable analyzer. Editorconfig enablement is wired only
+  for THROWS001–003. `[SuppressThrowsAnalysis]` is compiled into the
+  analyzer assembly (`IncludeBuildOutput` is false) and no analyzer reads
+  it. The unhandled-throw fix wraps the body in a catch that rethrows.
+  Useful precedents: member-kind coverage, catch ordering, `throw ex`
+  versus `throw`, async void, a synchronous throw before the first await,
+  unobserved tasks, and iterator `finally` timing. The flow algorithm and
+  the swallowing fixes are not precedents for Exceptionable.
 - **Exceptionator** —
   [repository](https://github.com/elmahio/Exceptionator/tree/f3d0f5e179923ebe296e611f0f61b6674b52bb22).
   Best-practice rules such as including a message, avoiding `System.Exception`,
