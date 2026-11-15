@@ -14,7 +14,8 @@ using Microsoft.CodeAnalysis.Formatting;
 namespace Exceptionable.Analyzers.CodeFixes
 {
     /// <summary>
-    /// Copies an interface member's exception contract onto an implementation that does not declare one.
+    /// Copies a required exception contract onto a member that does not declare one.
+    /// That includes an interface implementation and an override of a <c>[DoesNotThrow]</c> member.
     /// </summary>
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(MatchInterfaceContractCodeFixProvider)), Shared]
     public sealed class MatchInterfaceContractCodeFixProvider : CodeFixProvider

@@ -130,10 +130,12 @@ namespace Exceptionable.Analyzers.Tests
         {
             Diagnostic[] diagnostics = getDiagnostics("Polyfill_NoThrowCalls_ReportExc006");
 
-            Assert.That(diagnostics.Select(item => item.Id), Is.All.EqualTo("EXC006"));
-            Assert.That(diagnostics, Has.Length.EqualTo(10));
-            Assert.That(lines(diagnostics), Has.Some.Contain("comparer.Equals"));
-            Assert.That(lines(diagnostics), Has.Some.Contain("value.ToString()"));
+            Diagnostic[] unnecessary = [.. diagnostics.Where(item => item.Id == "EXC006")];
+            Assert.That(unnecessary, Has.Length.EqualTo(9));
+            Assert.That(diagnostics.Count(item => item.Id == "EXC009"), Is.EqualTo(1));
+            Assert.That(lines(unnecessary), Has.Some.Contain("comparer.Equals"));
+            Assert.That(lines(unnecessary), Has.Some.Contain("value.ToString()"));
+            Assert.That(lines(unnecessary), Has.None.Contain("token.ToString()"));
         }
 
         [Test]
@@ -143,9 +145,10 @@ namespace Exceptionable.Analyzers.Tests
                 "Polyfill_NoThrowCalls_ReportExc006",
                 ("exceptionable_polyfill.System.Collections.Generic", "disable"));
 
-            Assert.That(diagnostics, Has.Length.EqualTo(9));
-            Assert.That(diagnostics.Select(item => item.Id), Is.All.EqualTo("EXC006"));
-            Assert.That(lines(diagnostics), Has.None.Contain("comparer.Equals"));
+            Diagnostic[] unnecessary = [.. diagnostics.Where(item => item.Id == "EXC006")];
+            Assert.That(unnecessary, Has.Length.EqualTo(8));
+            Assert.That(diagnostics.Count(item => item.Id == "EXC009"), Is.EqualTo(1));
+            Assert.That(lines(unnecessary), Has.None.Contain("comparer.Equals"));
         }
 
         [Test]
@@ -173,8 +176,9 @@ namespace Exceptionable.Analyzers.Tests
             Diagnostic[] escapes = [.. diagnostics.Where(item => item.Id == "EXC001")];
             Diagnostic[] calls = [.. diagnostics.Where(item => item.Id == "EXC003")];
 
-            Assert.That(diagnostics, Has.Length.EqualTo(4));
+            Assert.That(diagnostics, Has.Length.EqualTo(7));
             Assert.That(escapes, Has.Length.EqualTo(3));
+            Assert.That(diagnostics.Count(item => item.Id == "EXC009"), Is.EqualTo(3));
             Assert.That(escapes.Select(item => item.GetMessage()), Is.All.Contain("'System.InvalidOperationException'"));
             Assert.That(calls, Has.Length.EqualTo(1));
             Assert.That(calls[0].GetMessage(), Does.Contain("'ToString'"));
@@ -183,11 +187,12 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
-        public void ExplicitThrows_ReplacesNoThrowPolyfill()
+        public void ExplicitThrows_DoesNotReplaceNoThrowPolyfill()
         {
             Diagnostic[] diagnostics = getDiagnostics("Polyfill_ExplicitThrows_ReplacesNoThrowPolyfill");
 
-            Assert.That(diagnostics, Is.Empty);
+            Assert.That(diagnostics.Select(item => item.Id), Is.EquivalentTo(new[] { "EXC001", "EXC009" }));
+            Assert.That(diagnostics.Single(item => item.Id == "EXC009").GetMessage(), Does.Contain("ToString").And.Contain("object.ToString"));
         }
 
         [Test]

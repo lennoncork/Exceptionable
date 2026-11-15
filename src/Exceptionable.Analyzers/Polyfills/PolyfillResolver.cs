@@ -63,8 +63,8 @@ namespace Exceptionable.Analyzers.Polyfills
 
         /// <summary>
         /// Gets the catalog namespace when <paramref name="method"/> is a no-throw call: the catalogued
-        /// member, a same-assembly override or interface implementation, or a source member that
-        /// overrides or implements the anchor.
+        /// member, or a same-assembly override or interface implementation that is not declared in source.
+        /// A source override publishes <c>[DoesNotThrow]</c> only when it declares that contract.
         /// </summary>
         internal bool TryGetCallerDoesNotThrowNamespace(IMethodSymbol method, out string @namespace)
         {
@@ -82,6 +82,13 @@ namespace Exceptionable.Analyzers.Polyfills
             NoThrowMatch match = this.matchNoThrow(method);
             @namespace = match.Namespace;
             return match.Implementation;
+        }
+
+        /// <summary>Gets the catalogued member a source override or implementation must not throw from.</summary>
+        internal IMethodSymbol? GetImplementationAnchor(IMethodSymbol method)
+        {
+            NoThrowMatch match = this.matchNoThrow(method);
+            return match.Implementation ? match.Anchor : null;
         }
 
         private NoThrowMatch matchNoThrow(IMethodSymbol method)
@@ -112,7 +119,7 @@ namespace Exceptionable.Analyzers.Polyfills
             }
 
             string @namespace = anchor.ContainingNamespace?.ToDisplayString() ?? string.Empty;
-            return new NoThrowMatch(caller: true, implementation: source, @namespace);
+            return new NoThrowMatch(caller: !source, implementation: source, @namespace, anchor);
         }
 
         private bool tryFindAnchor(IMethodSymbol definition, out IMethodSymbol? anchor)
@@ -266,13 +273,14 @@ namespace Exceptionable.Analyzers.Polyfills
 
         private readonly struct NoThrowMatch
         {
-            internal static NoThrowMatch None { get; } = new(false, false, string.Empty);
+            internal static NoThrowMatch None { get; } = new(false, false, string.Empty, null);
 
-            internal NoThrowMatch(bool caller, bool implementation, string @namespace)
+            internal NoThrowMatch(bool caller, bool implementation, string @namespace, IMethodSymbol? anchor)
             {
                 this.Caller = caller;
                 this.Implementation = implementation;
                 this.Namespace = @namespace;
+                this.Anchor = anchor;
             }
 
             internal bool Caller { get; }
@@ -280,6 +288,8 @@ namespace Exceptionable.Analyzers.Polyfills
             internal bool Implementation { get; }
 
             internal string Namespace { get; }
+
+            internal IMethodSymbol? Anchor { get; }
         }
     }
 }

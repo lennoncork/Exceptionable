@@ -76,8 +76,9 @@ namespace Exceptionable.Analyzers.Analysis
         }
 
         /// <summary>
-        /// A no-throw polyfill still reports when the member has no explicit contract. An inferred throw
-        /// stays visible to callers, so it does not satisfy this check.
+        /// A base <c>[DoesNotThrow]</c> or a no-throw polyfill still reports when the member has not
+        /// declared <c>[DoesNotThrow]</c>. An explicit <c>[Throws]</c> does not remove that requirement.
+        /// An inferred throw stays visible to callers, so it does not satisfy this check.
         /// </summary>
         private static bool violatesNoThrow(
             IMethodSymbol[] hosts,
@@ -87,9 +88,14 @@ namespace Exceptionable.Analyzers.Analysis
             ContractResolver contractResolver = compilationContext.ContractResolver;
             foreach (IMethodSymbol host in hosts)
             {
-                if (contractResolver.GetDeclaredContract(host).HasContract)
+                if (contractResolver.IsEffectivelyDoesNotThrow(host))
                 {
                     continue;
+                }
+
+                if (contractResolver.GetDoesNotThrowBaseMethod(host) is not null)
+                {
+                    return true;
                 }
 
                 if (compilationContext.Polyfills.TryGetImplementationConstraintNamespace(host, out string @namespace) &&

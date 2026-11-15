@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Exceptionable.Analyzers.Contracts;
 using Exceptionable.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
@@ -15,14 +16,23 @@ namespace Exceptionable.Analyzers.Analysis
             {
                 case IMethodSymbol method when method.AssociatedSymbol is null:
                     analyzeMethod(symbolContext, compilationContext, method);
+                    analyzeNoThrowObligation(symbolContext, compilationContext, method);
                     break;
                 case IPropertySymbol property:
                     analyzeMethod(symbolContext, compilationContext, property.GetMethod);
                     analyzeMethod(symbolContext, compilationContext, property.SetMethod);
+                    analyzeNoThrowObligation(
+                        symbolContext,
+                        compilationContext,
+                        property.GetMethod ?? property.SetMethod);
                     break;
                 case IEventSymbol eventSymbol:
                     analyzeMethod(symbolContext, compilationContext, eventSymbol.AddMethod);
                     analyzeMethod(symbolContext, compilationContext, eventSymbol.RemoveMethod);
+                    analyzeNoThrowObligation(
+                        symbolContext,
+                        compilationContext,
+                        eventSymbol.AddMethod ?? eventSymbol.RemoveMethod);
                     break;
             }
         }
@@ -63,6 +73,59 @@ namespace Exceptionable.Analyzers.Analysis
                     interfaceMember.GetQualifiedContractDisplayName(),
                     implementationDeclaresContract ? null : interfaceContract));
             }
+        }
+
+        private static void analyzeNoThrowObligation(
+            SymbolAnalysisContext symbolContext,
+            ExceptionableCompilationContext compilationContext,
+            IMethodSymbol? method)
+        {
+            if (method is null)
+            {
+                return;
+            }
+
+            ISymbol declared = method.AssociatedSymbol ?? method;
+            if (declared.IsImplicitlyDeclared || declared.DeclaringSyntaxReferences.IsEmpty)
+            {
+                return;
+            }
+
+            Location? location = getReportLocation(method, compilationContext);
+            if (location is null)
+            {
+                return;
+            }
+
+            ContractResolver contracts = compilationContext.ContractResolver;
+            if (contracts.DeclaresDoesNotThrow(method))
+            {
+                return;
+            }
+
+            IMethodSymbol? required = contracts.GetDoesNotThrowBaseMethod(method);
+            if (required is null &&
+                location.SourceTree is SyntaxTree tree &&
+                compilationContext.Polyfills.TryGetImplementationConstraintNamespace(method, out string @namespace) &&
+                compilationContext.Options.IsPolyfillEnabled(tree, @namespace))
+            {
+                required = compilationContext.Polyfills.GetImplementationAnchor(method);
+            }
+
+            if (required is null)
+            {
+                return;
+            }
+
+            ExceptionContract direct = contracts.GetDirectContract(method);
+            bool declaresContract = direct.HasContract ||
+                (method.AssociatedSymbol is ISymbol associated &&
+                    contracts.GetDirectContract(associated).HasContract);
+            symbolContext.ReportDiagnostic(DiagnosticFactory.InterfaceContractMismatch(
+                location,
+                method.GetQualifiedContractDisplayName(),
+                required.GetQualifiedContractDisplayName(),
+                declaresContract ? null : new ExceptionContract(true, ImmutableArray<INamedTypeSymbol>.Empty)));
         }
 
         private static Location? getReportLocation(

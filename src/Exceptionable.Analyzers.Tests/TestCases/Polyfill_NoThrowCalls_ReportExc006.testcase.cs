@@ -1,5 +1,6 @@
 // Certain calls to no-throw polyfill members.
-// Expected behavior: each try/catch is EXC006. Safe does not report EXC003.
+// Expected behavior: each framework or base try/catch is EXC006. Safe does not report EXC003.
+// Token.ToString is a source override with no [DoesNotThrow], so its call is not EXC006 and the method is EXC009.
 using System;
 using System.Collections.Generic;
 using Exceptionable;

@@ -1,5 +1,5 @@
-// An explicit [Throws] on an override replaces the no-throw polyfill.
-// Expected behavior: the declared InvalidOperationException is not EXC001.
+// An explicit [Throws] on an override does not replace the no-throw polyfill.
+// Expected behavior: EXC001 for the throw, and EXC009 because the override does not declare [DoesNotThrow].
 using Exceptionable;
 
 class Widget

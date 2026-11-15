@@ -89,6 +89,19 @@ namespace Exceptionable.Analyzers.Tests
         }
 
         [Test]
+        public void Exc009_DeclaresDoesNotThrowOnOverride()
+        {
+            string source = AnalyzerTestHarness.GetTestCase(
+                nameof(OverrideNoThrowContractTests.OverrideToString_MissingDoesNotThrow_ReportsExc009));
+
+            string[] results = applyFixes(source, new MatchInterfaceContractCodeFixProvider(), "EXC009");
+
+            Assert.That(results, Has.Length.EqualTo(1));
+            Assert.That(results[0], Does.Contain("global::Exceptionable.DoesNotThrow"));
+            Assert.That(results[0], Does.Contain("public override string ToString()"));
+        }
+
+        [Test]
         public void Exc009_CopiesTheInterfaceThrowsContract()
         {
             string source = AnalyzerTestHarness.GetTestCase(nameof(InterfaceContractMatchTests.InterfaceContractMismatch_MissingThrows_ReportsExc009));

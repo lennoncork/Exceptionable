@@ -1,6 +1,7 @@
 // Source members that override or implement a no-throw polyfill and let an exception escape.
-// Expected behavior: EXC001 on each throw. The sealed struct call is EXC003.
-// The unsealed class call is not. A catch around the throwing struct call is not EXC006.
+// Expected behavior: EXC001 on each throw and EXC009 because [DoesNotThrow] is missing.
+// The sealed struct call is EXC003. The unsealed class call is not.
+// A catch around the throwing struct call is not EXC006.
 using System;
 
 struct BadToken

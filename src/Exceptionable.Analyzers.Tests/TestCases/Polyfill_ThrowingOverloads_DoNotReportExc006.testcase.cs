@@ -4,10 +4,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Exceptionable;
 
 class Widget
 {
+    [DoesNotThrow]
     public override string ToString() => "widget";
+    public string ToString(string format) => format;
 }
 
 class Calls

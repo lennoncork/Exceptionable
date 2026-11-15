@@ -15,7 +15,7 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostic.Severity, Is.EqualTo(DiagnosticSeverity.Warning));
             Assert.That(
                 diagnostic.GetMessage(),
-                Is.EqualTo("The exception contract of 'Implementation.Execute' does not match implemented member 'IApi.Execute'"));
+                Is.EqualTo("The exception contract of 'Implementation.Execute' does not match 'IApi.Execute'"));
             Assert.That(span(diagnostic), Is.EqualTo("Execute"));
             Assert.That(diagnostics.Select(item => item.Id), Does.Not.Contain("EXC002"));
         }
