@@ -125,6 +125,85 @@ namespace Exceptionable.Analyzers.Tests
             Assert.That(diagnostics.Select(item => item.GetMessage()), Has.None.Contain("InvalidOperationException"));
         }
 
+        [Test]
+        public void NoThrowCalls_ReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics("Polyfill_NoThrowCalls_ReportExc006");
+
+            Assert.That(diagnostics.Select(item => item.Id), Is.All.EqualTo("EXC006"));
+            Assert.That(diagnostics, Has.Length.EqualTo(10));
+            Assert.That(lines(diagnostics), Has.Some.Contain("comparer.Equals"));
+            Assert.That(lines(diagnostics), Has.Some.Contain("value.ToString()"));
+        }
+
+        [Test]
+        public void NoThrowCalls_GenericNamespaceCanBeDisabled()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(
+                "Polyfill_NoThrowCalls_ReportExc006",
+                ("exceptionable_polyfill.System.Collections.Generic", "disable"));
+
+            Assert.That(diagnostics, Has.Length.EqualTo(9));
+            Assert.That(diagnostics.Select(item => item.Id), Is.All.EqualTo("EXC006"));
+            Assert.That(lines(diagnostics), Has.None.Contain("comparer.Equals"));
+        }
+
+        [Test]
+        public void NoThrowCalls_SystemNamespaceDisablesAnchor()
+        {
+            Diagnostic[] diagnostics = getDiagnostics(
+                "Polyfill_NoThrowCalls_ReportExc006",
+                ("exceptionable_polyfill.System", "disable"));
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void ThrowingOverloads_DoNotReportExc006()
+        {
+            Diagnostic[] diagnostics = getDiagnostics("Polyfill_ThrowingOverloads_DoNotReportExc006");
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void NoThrowImplementation_ReportsExc001AndSealedCall()
+        {
+            Diagnostic[] diagnostics = getDiagnostics("Polyfill_NoThrowImplementation_ReportsExc001");
+            Diagnostic[] escapes = [.. diagnostics.Where(item => item.Id == "EXC001")];
+            Diagnostic[] calls = [.. diagnostics.Where(item => item.Id == "EXC003")];
+
+            Assert.That(diagnostics, Has.Length.EqualTo(4));
+            Assert.That(escapes, Has.Length.EqualTo(3));
+            Assert.That(escapes.Select(item => item.GetMessage()), Is.All.Contain("'System.InvalidOperationException'"));
+            Assert.That(calls, Has.Length.EqualTo(1));
+            Assert.That(calls[0].GetMessage(), Does.Contain("'ToString'"));
+            Assert.That(lines(calls), Has.Some.Contain("ToString()"));
+            Assert.That(diagnostics.Select(item => item.Id), Has.None.EqualTo("EXC006"));
+        }
+
+        [Test]
+        public void ExplicitThrows_ReplacesNoThrowPolyfill()
+        {
+            Diagnostic[] diagnostics = getDiagnostics("Polyfill_ExplicitThrows_ReplacesNoThrowPolyfill");
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        [Test]
+        public void CaughtToStringThrow_DoesNotReportExc001()
+        {
+            Diagnostic[] diagnostics = getDiagnostics("Polyfill_CaughtToStringThrow_DoesNotReportExc001");
+
+            Assert.That(diagnostics, Is.Empty);
+        }
+
+        private static string[] lines(Diagnostic[] diagnostics) =>
+        [
+            .. diagnostics.Select(diagnostic =>
+                diagnostic.Location.SourceTree!.GetText().Lines[diagnostic.Location.GetLineSpan().StartLinePosition.Line].ToString()),
+        ];
+
         private static Diagnostic[] getDiagnostics(string testCase, params (string Key, string Value)[] options) =>
             AnalyzerTestHarness.GetDiagnostics(
                 AnalyzerTestHarness.GetTestCase(testCase),

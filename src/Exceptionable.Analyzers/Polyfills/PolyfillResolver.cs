@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using Exceptionable.Analyzers.Contracts;
 using Microsoft.CodeAnalysis;
 
 namespace Exceptionable.Analyzers.Polyfills
@@ -17,6 +18,8 @@ namespace Exceptionable.Analyzers.Polyfills
             new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<IMethodSymbol, ImmutableArray<INamedTypeSymbol>> thrownTypes =
             new(SymbolEqualityComparer.Default);
+        private readonly ConcurrentDictionary<IMethodSymbol, NoThrowMatch> noThrowMatches =
+            new(SymbolEqualityComparer.Default);
 
         internal PolyfillResolver(Compilation compilation, IEnumerable<PolyfillModule> modules)
         {
@@ -26,13 +29,13 @@ namespace Exceptionable.Analyzers.Polyfills
                 foreach (PolyfillApi api in module.Apis)
                 {
                     string key = module.Namespace + "." + api.TypeName;
-                    if (!this.apisByNamespaceAndType.TryGetValue(module.Namespace, out var types))
+                    if (!this.apisByNamespaceAndType.TryGetValue(module.Namespace, out Dictionary<string, List<PolyfillApi>>? types))
                     {
                         types = new Dictionary<string, List<PolyfillApi>>(StringComparer.Ordinal);
                         this.apisByNamespaceAndType[module.Namespace] = types;
                     }
 
-                    if (!types.TryGetValue(key, out var apis))
+                    if (!types.TryGetValue(key, out List<PolyfillApi>? apis))
                     {
                         apis = [];
                         types[key] = apis;
@@ -58,6 +61,153 @@ namespace Exceptionable.Analyzers.Polyfills
         internal ImmutableArray<INamedTypeSymbol> GetThrownTypes(IMethodSymbol method) =>
             this.thrownTypes.GetOrAdd(method, this.resolve);
 
+        /// <summary>
+        /// Gets the catalog namespace when <paramref name="method"/> is a no-throw call: the catalogued
+        /// member, a same-assembly override or interface implementation, or a source member that
+        /// overrides or implements the anchor.
+        /// </summary>
+        internal bool TryGetCallerDoesNotThrowNamespace(IMethodSymbol method, out string @namespace)
+        {
+            NoThrowMatch match = this.matchNoThrow(method);
+            @namespace = match.Namespace;
+            return match.Caller;
+        }
+
+        /// <summary>
+        /// Gets the catalog namespace when a source member must not let an exception escape because
+        /// it overrides or implements a no-throw entry.
+        /// </summary>
+        internal bool TryGetImplementationConstraintNamespace(IMethodSymbol method, out string @namespace)
+        {
+            NoThrowMatch match = this.matchNoThrow(method);
+            @namespace = match.Namespace;
+            return match.Implementation;
+        }
+
+        private NoThrowMatch matchNoThrow(IMethodSymbol method)
+        {
+            if (!isNoThrowCandidate(method.Name))
+            {
+                return NoThrowMatch.None;
+            }
+
+            IMethodSymbol definition = (method.ReducedFrom ?? method).OriginalDefinition;
+            return this.noThrowMatches.GetOrAdd(definition, this.matchNoThrowDefinition);
+        }
+
+        private NoThrowMatch matchNoThrowDefinition(IMethodSymbol definition)
+        {
+            if (!this.tryFindAnchor(definition, out IMethodSymbol? anchor) || anchor is null)
+            {
+                return NoThrowMatch.None;
+            }
+
+            bool source = !definition.DeclaringSyntaxReferences.IsEmpty;
+            bool sameAssembly = SymbolEqualityComparer.Default.Equals(
+                definition.ContainingAssembly,
+                anchor.ContainingAssembly);
+            if (!source && !sameAssembly)
+            {
+                return NoThrowMatch.None;
+            }
+
+            string @namespace = anchor.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+            return new NoThrowMatch(caller: true, implementation: source, @namespace);
+        }
+
+        private bool tryFindAnchor(IMethodSymbol definition, out IMethodSymbol? anchor)
+        {
+            anchor = null;
+            if (this.getDirect(definition) is PolyfillApi direct)
+            {
+                if (!direct.DoesNotThrow || !definition.DeclaringSyntaxReferences.IsEmpty)
+                {
+                    return false;
+                }
+
+                anchor = definition;
+                return true;
+            }
+
+            for (IMethodSymbol? current = definition.OverriddenMethod; current is not null; current = current.OverriddenMethod)
+            {
+                IMethodSymbol candidate = (current.ReducedFrom ?? current).OriginalDefinition;
+                if (this.getDirect(candidate) is not PolyfillApi api)
+                {
+                    continue;
+                }
+
+                if (!api.DoesNotThrow)
+                {
+                    return false;
+                }
+
+                anchor = candidate;
+                return true;
+            }
+
+            INamedTypeSymbol? containingType = definition.ContainingType;
+            if (containingType is null)
+            {
+                return false;
+            }
+
+            foreach (INamedTypeSymbol iface in containingType.AllInterfaces)
+            {
+                foreach (ISymbol member in iface.GetMembers(definition.Name))
+                {
+                    if (member is not IMethodSymbol interfaceMethod ||
+                        containingType.FindImplementationForInterfaceMember(interfaceMethod) is not IMethodSymbol implementation ||
+                        !implementation.IsSameMethod(definition))
+                    {
+                        continue;
+                    }
+
+                    IMethodSymbol candidate = (interfaceMethod.ReducedFrom ?? interfaceMethod).OriginalDefinition;
+                    if (this.getDirect(candidate) is not PolyfillApi api || !api.DoesNotThrow)
+                    {
+                        continue;
+                    }
+
+                    anchor = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private PolyfillApi? getDirect(IMethodSymbol definition)
+        {
+            if (definition.ContainingType is null)
+            {
+                return null;
+            }
+
+            string @namespace = definition.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+            if (!this.apisByNamespaceAndType.TryGetValue(@namespace, out Dictionary<string, List<PolyfillApi>>? types))
+            {
+                return null;
+            }
+
+            string key = @namespace + "." + definition.ContainingType.MetadataName;
+            if (!types.TryGetValue(key, out List<PolyfillApi>? apis))
+            {
+                return null;
+            }
+
+            foreach (PolyfillApi candidate in apis)
+            {
+                if (candidate.MemberName == definition.Name &&
+                    (candidate.ParameterCount is null || candidate.ParameterCount == definition.Parameters.Length))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
         private ImmutableArray<INamedTypeSymbol> resolve(IMethodSymbol method)
         {
             IMethodSymbol definition = (method.ReducedFrom ?? method).OriginalDefinition;
@@ -70,7 +220,7 @@ namespace Exceptionable.Analyzers.Polyfills
             }
 
             string key = @namespace + "." + definition.ContainingType.MetadataName;
-            if (!this.apisByNamespaceAndType[@namespace].TryGetValue(key, out var apis))
+            if (!this.apisByNamespaceAndType[@namespace].TryGetValue(key, out List<PolyfillApi>? apis))
             {
                 return ImmutableArray<INamedTypeSymbol>.Empty;
             }
@@ -78,7 +228,8 @@ namespace Exceptionable.Analyzers.Polyfills
             ImmutableArray<INamedTypeSymbol>.Builder types = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
             foreach (PolyfillApi api in apis)
             {
-                if (api.MemberName != definition.Name ||
+                if (api.DoesNotThrow ||
+                    api.MemberName != definition.Name ||
                     (api.ParameterCount is int count && count != definition.Parameters.Length))
                 {
                     continue;
@@ -97,6 +248,9 @@ namespace Exceptionable.Analyzers.Polyfills
             return types.ToImmutable();
         }
 
+        private static bool isNoThrowCandidate(string name) =>
+            name is "Equals" or "GetHashCode" or "ToString" or "CompareTo" or "ReferenceEquals";
+
         private static bool contains(ImmutableArray<INamedTypeSymbol>.Builder types, INamedTypeSymbol type)
         {
             foreach (INamedTypeSymbol candidate in types)
@@ -108,6 +262,24 @@ namespace Exceptionable.Analyzers.Polyfills
             }
 
             return false;
+        }
+
+        private readonly struct NoThrowMatch
+        {
+            internal static NoThrowMatch None { get; } = new(false, false, string.Empty);
+
+            internal NoThrowMatch(bool caller, bool implementation, string @namespace)
+            {
+                this.Caller = caller;
+                this.Implementation = implementation;
+                this.Namespace = @namespace;
+            }
+
+            internal bool Caller { get; }
+
+            internal bool Implementation { get; }
+
+            internal string Namespace { get; }
         }
     }
 }

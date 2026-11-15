@@ -58,24 +58,48 @@ namespace Exceptionable.Analyzers.Analysis
 
             ContractResolver contractResolver = compilationContext.ContractResolver;
             IMethodSymbol[] applicable = [.. hosts.Where(contractResolver.HasApplicableContract)];
-            if (applicable.Length == 0)
-            {
-                return;
-            }
-
-            if (applicable.Any(contractResolver.IsEffectivelyDoesNotThrow))
+            if (violatesNoThrow(hosts, throwOperation, compilationContext) ||
+                applicable.Any(contractResolver.IsEffectivelyDoesNotThrow))
             {
                 operationContext.ReportDiagnostic(DiagnosticFactory.DoesNotThrowEscapes(
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.GetExceptionDisplayName()));
             }
             else if (!redundantArgumentNull &&
+                applicable.Length > 0 &&
                 applicable.Any(host => !contractResolver.IsExceptionPermitted(host, exceptionType)))
             {
                 operationContext.ReportDiagnostic(DiagnosticFactory.ThrowsMismatch(
                     throwOperation.Syntax.GetLocation(),
                     exceptionType.GetExceptionDisplayName()));
             }
+        }
+
+        /// <summary>
+        /// A no-throw polyfill still reports when the member has no explicit contract. An inferred throw
+        /// stays visible to callers, so it does not satisfy this check.
+        /// </summary>
+        private static bool violatesNoThrow(
+            IMethodSymbol[] hosts,
+            IThrowOperation throwOperation,
+            ExceptionableCompilationContext compilationContext)
+        {
+            ContractResolver contractResolver = compilationContext.ContractResolver;
+            foreach (IMethodSymbol host in hosts)
+            {
+                if (contractResolver.GetDeclaredContract(host).HasContract)
+                {
+                    continue;
+                }
+
+                if (compilationContext.Polyfills.TryGetImplementationConstraintNamespace(host, out string @namespace) &&
+                    compilationContext.Options.IsPolyfillEnabled(throwOperation.Syntax.SyntaxTree, @namespace))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

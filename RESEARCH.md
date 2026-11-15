@@ -465,6 +465,59 @@ A referencing compilation matches the same id on the metadata method. A
 closed generic exception display name is not always a metadata type name, so
 resolution of that recorded type can fail. DESIGN.md records that limit.
 
+## Members that are not expected to throw
+
+[CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+is the framework's rule for throws from members callers do not guard. Its
+groups are property getters, event accessors, `Equals`, `GetHashCode`,
+`ToString`, static constructors, finalizers, `Dispose`, equality operators,
+and implicit conversions. The
+[exception best practices](https://learn.microsoft.com/en-us/dotnet/standard/exceptions/best-practices-for-exceptions)
+point at that rule for `Equals`, `GetHashCode`, `ToString`, static
+constructors, and equality operators. CA1065 is an implementation warning.
+It is not a caller-side claim that every such member is non-throwing, and
+several groups explicitly allow exceptions.
+
+Exceptionable's no-throw polyfill is the narrower set whose contract is that
+no exception escapes, and whose framework implementations do not throw:
+
+- [CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+  says `Object.Equals`, `IEquatable<T>.Equals`, and parameterless
+  `Object.GetHashCode` should not throw, and that `Object.ToString` should
+  not throw because the debugger calls it. `GetHashCode` overloads that take
+  an argument may throw `ArgumentException`.
+- [`IEqualityComparer<T>.Equals`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.iequalitycomparer-1.equals)
+  documents no exceptions.
+  [`IEqualityComparer<T>.GetHashCode`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.iequalitycomparer-1.gethashcode)
+  documents `ArgumentNullException`.
+  [`IEqualityComparer.Equals(object, object)`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.iequalitycomparer.equals)
+  documents `ArgumentException`.
+- [`IComparable<T>.CompareTo`](https://learn.microsoft.com/en-us/dotnet/api/system.icomparable-1.compareto)
+  documents no exceptions. Null compares as less than any instance.
+  [`IComparable.CompareTo(object)`](https://learn.microsoft.com/en-us/dotnet/api/system.icomparable.compareto)
+  requires `ArgumentException` when the argument type differs.
+- [`Comparer<T>.Compare`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.comparer-1.compare)
+  documents `ArgumentException` when `T` implements neither
+  `IComparable<T>` nor `IComparable`. The interface
+  [`IComparer<T>.Compare`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.icomparer-1.compare)
+  has no exception section, but the framework class that implements it does
+  throw, so the interface is not a no-throw entry.
+- [Property design](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/property)
+  says to avoid throwing from getters, and CA1065 still allows
+  `InvalidOperationException`, `NotSupportedException`, and some argument
+  exceptions. Those members are not catalogued as no-throw.
+
+Format overloads such as `Int32.ToString(string)` throw `FormatException` and
+are excluded by parameter count. Static `Object.Equals(object, object)` calls
+the instance method, so it is not its own no-throw entry. `Object.ReferenceEquals`
+does not throw and is included with the equality members.
+
+The analyzer implementation of CA1065,
+[`DoNotRaiseExceptionsInUnexpectedLocations.cs`](https://source.dot.net/Microsoft.CodeAnalysis.NetAnalyzers/Microsoft.CodeQuality.Analyzers/ApiDesignGuidelines/DoNotRaiseExceptionsInUnexpectedLocations.cs.html),
+is an example of matching `Equals`, `GetHashCode`, and `ToString` by role.
+Use it as an example of the method categories, not as the Exceptionable
+catalog. DESIGN.md section 9 records which of those categories are entries.
+
 ## How this research applies
 
 Exceptionable already uses the split this guide recommends: the public

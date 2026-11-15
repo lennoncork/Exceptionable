@@ -15,6 +15,9 @@ namespace Exceptionable.Analyzers.Polyfills
             Api("Queue`1", "Peek", "System.InvalidOperationException"),
             Api("Stack`1", "Pop", "System.InvalidOperationException"),
             Api("Stack`1", "Peek", "System.InvalidOperationException"),
+            // GetHashCode(T) documents ArgumentNullException. Non-generic IEqualityComparer.Equals
+            // documents ArgumentException. Comparer<T>.Compare documents ArgumentException.
+            DoesNotThrow("IEqualityComparer`1", "Equals", 2),
         ];
     }
 }

@@ -355,7 +355,8 @@ exception the analyzer recognizes or cannot rule out. `nameof` does not
 invoke the named member. Lambdas and local functions are not treated as
 invoked by the try body. Invoking a delegate parameter whose direct contract
 is `[DoesNotThrow]` is a non-throwing call for EXC006. A virtual
-`[DoesNotThrow]` is not, because dispatch is uncertain.
+`[DoesNotThrow]` is not, because dispatch is uncertain. A no-throw polyfill
+(section 9) is proven on the same terms.
 
 An open virtual or unsealed override call is checked only for the explicit
 `[Throws]` set on the statically selected method. An inferred throw on that
@@ -616,8 +617,10 @@ turn analysis on. The parser behavior and links are in
 Framework and third-party methods carry no `[Throws]` metadata, so most real
 exception sources would otherwise stay unspecified. Exceptionable fills that
 gap with **polyfills**: a curated catalog, built into the analyzer, of the
-exceptions specific external APIs may throw. A polyfill behaves as if the
-external member carried `[Throws]` for the listed types.
+exceptions specific external APIs may throw, and of members whose contract is
+that they do not throw. A throwing entry behaves as if the external member
+carried `[Throws]` for the listed types. A no-throw entry behaves as if it
+carried `[DoesNotThrow]`.
 
 **Decision:** the analyzer does not read XML documentation comments for
 exception information. XML documentation is incomplete, inconsistent about
@@ -636,12 +639,14 @@ Rules:
   registering it in `PolyfillCatalog`.
 - **Enabled by default, with opt-out.** Polyfills are on whenever analysis
   is enabled; a project that enabled analysis gets framework coverage without
-  extra setup. Because a new catalog entry can add EXC003 diagnostics in a
-  later analyzer version, every entry must be conservative and correct, and
-  any namespace or the whole catalog can be turned off. Polyfills never apply
-  when analysis itself is disabled.
+  extra setup. Because a new catalog entry can add EXC003, EXC006, or EXC001
+  diagnostics in a later analyzer version, every entry must be conservative
+  and correct, and any namespace or the whole catalog can be turned off.
+  Polyfills never apply when analysis itself is disabled.
 - **Developers have the final say.** Enablement is resolved per source file
-  for the namespace of the called member, in this order:
+  for the catalog namespace of the entry. A no-throw entry inherited from an
+  anchor uses that anchor's namespace, so `exceptionable_polyfill.System`
+  covers `ToString` on a type in another namespace. The order is:
   1. `exceptionable_polyfill.<namespace> = enable|disable` in
      `.editorconfig`. The most specific namespace wins, so
      `exceptionable_polyfill.System.IO` overrides
@@ -656,27 +661,62 @@ Rules:
   Keys are not case sensitive. A catalog entry never overrides an explicit
   `[Throws]` or `[DoesNotThrow]` contract or an inferred contract recorded in
   the referenced assembly.
-- **Source members are never matched.** A polyfill applies only to members
-  without declaring syntax in the compilation.
-- **What an entry lists.** The exceptions a member throws for valid arguments
-  because of the state of the environment or its inputs, such as
+- **Source members are never matched by name.** A catalog row applies only to
+  a member without declaring syntax. A no-throw row also applies to an
+  override or interface implementation in the same assembly, and to a source
+  override or interface implementation in the compilation being analyzed.
+  An external override in another assembly stays unspecified: the catalog
+  cannot see that body.
+- **What a throwing entry lists.** The exceptions a member throws for valid
+  arguments because of the state of the environment or its inputs, such as
   `IOException` from `File.ReadAllText` or `InvalidOperationException` from
   `Enumerable.First` on an empty sequence. An entry lists the most useful
   covering type: `IOException` covers `FileNotFoundException`. It omits
   `ArgumentNullException`, which nullable analysis owns. An entry can be
   limited to overloads by parameter count when overloads differ.
-- **Reporting.** A polyfilled call is checked like an annotated call and is
+- **What a no-throw entry lists.** One member that must not let an exception
+  escape, limited by parameter count so a throwing overload is not included.
+  The rows are parameterless `Object.ToString`, `Object.Equals(object)`,
+  `Object.GetHashCode`, `Object.ReferenceEquals`, `IEquatable<T>.Equals`,
+  `IComparable<T>.CompareTo`, and `IEqualityComparer<T>.Equals`.
+  Same-assembly overrides follow the anchor, which covers `String` and the
+  primitive numeric types without a row per type. These are not entries,
+  because their documented contract allows an exception or the framework
+  implementation throws: format `ToString` overloads (`FormatException`);
+  static `Object.Equals(object, object)` (it calls the instance method);
+  non-generic `IComparable.CompareTo(object)` and non-generic
+  `IEqualityComparer.Equals` (`ArgumentException`); `IComparer<T>.Compare`
+  and `Comparer<T>.Compare` (`ArgumentException` when `T` is not comparable);
+  `GetHashCode` methods that take an argument (`ArgumentNullException`).
+  Property getters, event accessors, `Dispose`, static constructors,
+  finalizers, equality operators, and implicit conversions are also omitted.
+  [CA1065](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1065)
+  treats several of those as unexpected throw sites, but the framework itself
+  throws from getters, `Dispose`, and some operators. The links and the
+  narrower catalog choice are in [RESEARCH.md](./RESEARCH.md).
+- **Reporting.** A throwing entry is checked like an annotated call and is
   EXC003. It is not inferred onto its caller and is not a `[DoesNotThrow]`
-  call, so EXC006 and EXC008 are unchanged.
+  call, so EXC006 and EXC008 are unchanged for that call. A no-throw entry
+  adds no thrown type. When the callee has no explicit or inferred contract
+  and dispatch is certain, the call is a `[DoesNotThrow]` call for EXC006.
+  An open virtual or unsealed override stays unchecked, as in section 6.
+  A source member covered by a no-throw entry is EXC001 when a known
+  exception escapes. The implementation does not have to repeat
+  `[DoesNotThrow]`, so this is not EXC009. An explicit contract on that
+  member replaces the polyfill. A throw that escapes is still inferred for
+  callers: EXC006 is not reported for that call, because the catch may be
+  handling the exception the body actually throws.
 - **Per compilation.** The catalog is static data (names only). Exception
   symbols are resolved per compilation and are not retained across
   compilations. A type absent from a compilation drops that entry.
 
-The catalog covers `System` (`Parse` members), `System.Collections.Generic`,
-`System.IO`, `System.Linq`, and `System.Threading.Tasks`; the user-facing
-list is in [docs/README.md](./docs/README.md#framework-polyfills). A missing
+The catalog covers `System` (`Parse` members and the no-throw `Object`,
+`IEquatable<T>`, and `IComparable<T>` members), `System.Collections.Generic`
+(including `IEqualityComparer<T>.Equals`), `System.IO`, `System.Linq`, and
+`System.Threading.Tasks`; the user-facing list is in
+[docs/README.md](./docs/README.md#framework-polyfills). A missing
 API is requested with an issue naming the namespace, type, member, and the
-documented exception.
+documented exception or the no-throw contract.
 
 **Async and LINQ.** The same catalog is the mechanism for both, in stages:
 
@@ -750,9 +790,11 @@ asset loads it with the analyzer.
 It does not add a public attribute to the Exceptionable package.
 `Polyfills/` contains one `PolyfillModule` per namespace, the
 `PolyfillCatalog` that registers them, and the per-compilation
-`PolyfillResolver` that maps a method to exception symbols.
-`CallContractAnalysis` consults it only for a method without an explicit or
-inferred contract, after `AnalysisOptions.IsPolyfillEnabled` allows it.
+`PolyfillResolver` that maps a method to exception symbols or to a no-throw
+entry. `CallContractAnalysis` consults throwing entries only for a method
+without an explicit or inferred contract. `UnnecessaryCatchAnalysis` and
+`ThrowContractAnalysis` consult no-throw entries. Each check runs only after
+`AnalysisOptions.IsPolyfillEnabled` allows the anchor namespace.
 `Diagnostics/` owns the descriptors and `DiagnosticFactory`, which defines each rule's message arguments and diagnostic properties. Keep rule handlers focused on one
 diagnostic path and share semantic helpers rather than duplicating contract
 resolution or operation traversal.
@@ -810,6 +852,13 @@ phase 4 documentation:
   method is async or an iterator. A body-less deferred signature stays
   deferred. An open virtual or unsealed override is checked only for its
   explicit `[Throws]` set.
+- No-throw polyfill entries cover parameterless `ToString`, `Equals`,
+  `GetHashCode`, `ReferenceEquals`, `IEquatable<T>.Equals`,
+  `IEqualityComparer<T>.Equals`, and `IComparable<T>.CompareTo`, including
+  same-assembly overrides. A certain call with no contract of its own is
+  EXC006. A source implementation that lets a known exception escape is
+  EXC001 unless that member has an explicit contract. Documented throwing
+  overloads and open virtual calls stay unchecked.
 
 Still open:
 
@@ -903,6 +952,11 @@ Minimum acceptance criteria for the initial usable release:
   abstract method with the same return type and `[Throws]` is not.
 - An open virtual call reports EXC003 for the explicit `[Throws]` set on the
   statically selected method. An inferred-only virtual throw is not EXC003.
+- A no-throw polyfill call with certain dispatch reports EXC006. The same
+  shape around an open virtual call, a documented throwing overload, or a
+  callee with an inferred throw does not. A source override or interface
+  implementation that lets a known exception escape is EXC001 unless it
+  declares an explicit contract.
 - The analyzer builds, loads in a consumer project, and runs without
   diagnostics caused by the analyzer itself.
 - Tests explicitly capture unsupported cases so future phases can expand

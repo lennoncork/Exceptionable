@@ -54,13 +54,17 @@ exceptionable_polyfill.System.IO = enable
 ```
 
 The most specific namespace setting wins, then `exceptionable_polyfill`, then
-`<ExceptionablePolyfills>`. A polyfilled call is reported as EXC003. An
-explicit or inferred contract always takes precedence.
+`<ExceptionablePolyfills>`. A throwing entry is reported as EXC003. A no-throw
+entry makes a certain call `[DoesNotThrow]`: a `try`/`catch` around only that
+call is EXC006, and a source override or interface implementation that lets a
+known exception escape is EXC001. An open virtual call stays unchecked. An
+explicit or inferred contract always takes precedence, so a member that is
+known to throw is not treated as no-throw at the call.
 
 | Namespace | APIs |
 |---|---|
-| `System` | `Int32.Parse`, `Int64.Parse`, `Guid.Parse`, `DateTime.Parse` |
-| `System.Collections.Generic` | `Dictionary` and `List` indexers, `Queue.Dequeue`/`Peek`, `Stack.Pop`/`Peek` |
+| `System` | `Int32.Parse`, `Int64.Parse`, `Guid.Parse`, `DateTime.Parse`. No-throw: parameterless `Object.ToString`, `Object.Equals(object)`, `Object.GetHashCode`, `Object.ReferenceEquals`, `IEquatable<T>.Equals`, `IComparable<T>.CompareTo`, and same-assembly overrides such as `String` and `Int32` |
+| `System.Collections.Generic` | `Dictionary` and `List` indexers, `Queue.Dequeue`/`Peek`, `Stack.Pop`/`Peek`. No-throw: `IEqualityComparer<T>.Equals` |
 | `System.IO` | `File` read, write, copy, and delete members; `Directory.CreateDirectory` and `GetFiles` |
 | `System.Linq` | `First`, `Last`, `Single`, `ElementAt`, unseeded `Aggregate` |
 | `System.Threading.Tasks` | `Task.Wait`, `Task.WaitAll`, `Task<T>.Result` |

@@ -69,8 +69,9 @@ Per-file control uses `exceptionable_analysis`.
 Rule severity uses standard `dotnet_diagnostic.EXCxxx.severity` settings.
 Severity settings do not enable analysis.
 
-Framework exception polyfills (for example `File.ReadAllText` and LINQ
-`First`) are on by default once analysis is enabled. Turn them off with
+Framework exception polyfills (for example `File.ReadAllText`, LINQ
+`First`, and no-throw members such as parameterless `ToString`) are on by
+default once analysis is enabled. Turn them off with
 `<ExceptionablePolyfills>disable</ExceptionablePolyfills>`,
 `exceptionable_polyfill = disable`, or per namespace such as
 `exceptionable_polyfill.System.IO = disable`. See the

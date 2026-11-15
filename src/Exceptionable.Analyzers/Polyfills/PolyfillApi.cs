@@ -5,12 +5,18 @@ namespace Exceptionable.Analyzers.Polyfills
     /// </summary>
     internal sealed class PolyfillApi
     {
-        internal PolyfillApi(string typeName, string memberName, int? parameterCount, string[] exceptions)
+        internal PolyfillApi(
+            string typeName,
+            string memberName,
+            int? parameterCount,
+            string[] exceptions,
+            bool doesNotThrow = false)
         {
             this.TypeName = typeName;
             this.MemberName = memberName;
             this.ParameterCount = parameterCount;
             this.Exceptions = exceptions;
+            this.DoesNotThrow = doesNotThrow;
         }
 
         /// <summary>Gets the type's metadata name without its namespace, such as <c>Dictionary`2</c>.</summary>
@@ -24,5 +30,8 @@ namespace Exceptionable.Analyzers.Polyfills
 
         /// <summary>Gets the namespace-qualified metadata names of the exceptions the member may throw.</summary>
         internal string[] Exceptions { get; }
+
+        /// <summary>Gets a value indicating that the member's contract is to let no exception escape.</summary>
+        internal bool DoesNotThrow { get; }
     }
 }

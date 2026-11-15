@@ -8,7 +8,7 @@ namespace Exceptionable.Analyzers.Diagnostics
         internal static readonly DiagnosticDescriptor DoesNotThrowEscapes = new(
             "EXC001",
             "Exception escapes a [DoesNotThrow] contract",
-            "Exception type '{0}' escapes a method marked [DoesNotThrow]",
+            "Exception type '{0}' escapes a [DoesNotThrow] contract",
             "Exceptionable",
             DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
